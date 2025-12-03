@@ -149,7 +149,7 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
       apiKey: process.env.GROK_API_KEY
     });
     const response = await grok.chat.completions.create({
-      model: 'grok-beta',
+      model: 'grok-3',
       max_tokens: 2000,
       temperature: 0,
       messages: [

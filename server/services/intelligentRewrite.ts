@@ -249,7 +249,7 @@ COMPLETE ${isTextFiction ? 'STORY' : 'ESSAY'}:`;
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: "grok-beta",
+          model: "grok-3",
           messages: [{ role: "user", content: basePrompt }],
           temperature: 0.3,
           max_tokens: 8000

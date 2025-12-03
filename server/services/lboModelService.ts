@@ -164,7 +164,7 @@ export async function parseLBODescription(
       apiKey: process.env.GROK_API_KEY,
     });
     const response = await grok.chat.completions.create({
-      model: "grok-beta",
+      model: "grok-3",
       messages: [{ role: "user", content: fullPrompt }],
       temperature: 0.3,
     });

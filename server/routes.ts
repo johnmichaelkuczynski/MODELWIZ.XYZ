@@ -249,7 +249,7 @@ Then provide detailed analysis organized into sections:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'grok-beta',
+        model: 'grok-3',
         messages: [{ role: 'user', content: prompt }],
         stream: true,
         max_tokens: 4000,
@@ -471,7 +471,7 @@ Provide detailed analysis of literary merit, character development, plot structu
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'grok-beta',
+        model: 'grok-3',
         messages: [{ role: 'user', content: prompt }],
         stream: true,
         max_tokens: 4000,
@@ -1434,7 +1434,7 @@ ${externalKnowledge}`;
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'grok-beta',
+            model: 'grok-3',
             messages: [
               { role: 'system', content: systemMessage },
               ...messages

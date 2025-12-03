@@ -305,7 +305,7 @@ async function callLLMProvider(
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: "grok-beta",
+          model: "grok-3",
           messages: messages,
           temperature: 0.1
         })
