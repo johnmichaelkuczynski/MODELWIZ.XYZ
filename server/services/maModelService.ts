@@ -527,62 +527,62 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   }
 
   // ============ SOURCES AND USES (BUG #2 FIX - FINAL CORRECTED) ============
-  // Standard M&A Sources & Uses format follows "Total Transaction Value" approach:
-  // USES = Equity Value + Target Net Debt Refinanced + Transaction Fees = Enterprise Value + Fees
-  // SOURCES = Cash (from BS) + New Debt Raised + Stock Consideration
+  // Standard M&A Sources & Uses: Sources MUST equal Uses exactly
   // 
-  // Key insight: Sources MUST equal Uses exactly (balanced transaction)
+  // USES = Equity Value + Debt Payoff (if any) + Transaction Fees
+  // SOURCES = Stock + Net Cash from Target + Cash from BS + New Debt
+  //
+  // Logic: Fill sources in priority order until uses are fully funded
+  // 1. Stock consideration (fixed %, but capped at total uses)
+  // 2. Net cash from target (if any, capped at remaining)
+  // 3. Cash from balance sheet (user input, capped at remaining)
+  // 4. New debt (whatever is left to balance)
   
-  // Total Uses = Enterprise Value + Transaction Fees
-  const totalUsesAmount = purchasePrice + targetNetDebt + transactionFees;
+  // Calculate what needs to be funded (positive debt means payoff needed)
+  const debtPayoffAmount = Math.max(0, targetNetDebt);
+  const rawNetCashFromTarget = targetNetDebt < 0 ? Math.abs(targetNetDebt) : 0;
   
-  // Stock is fixed at stock consideration (% of purchase price)
-  // Remaining amount (cash portion + debt payoff + fees) must be funded by cash + debt
-  const cashPortionNeeded = totalUsesAmount - stockConsideration;
+  // Total Uses - this is the fixed target
+  const grossUsesAmount = purchasePrice + debtPayoffAmount + transactionFees;
   
-  // User inputs for cash sources
-  const userCashFromBS = cashFromBalance || 0;
-  const userNewDebt = newDebtAmount || 0;
-  const totalUserCashSources = userCashFromBS + userNewDebt;
+  // Step 1: Stock consideration (can't exceed total uses)
+  const finalStockConsideration = Math.min(stockConsideration, grossUsesAmount);
+  let remainingToFund = grossUsesAmount - finalStockConsideration;
   
-  // Calculate final cash sources to exactly balance
-  let finalCashFromBS: number;
-  let finalNewDebt: number;
+  // Step 2: Net cash from target (can't exceed remaining)
+  const netCashApplied = Math.min(rawNetCashFromTarget, remainingToFund);
+  remainingToFund -= netCashApplied;
   
-  if (totalUserCashSources >= cashPortionNeeded) {
-    // User provided enough - use cash first, then scale down debt
-    if (userCashFromBS >= cashPortionNeeded) {
-      // Cash alone covers it - no debt needed
-      finalCashFromBS = cashPortionNeeded;
-      finalNewDebt = 0;
-    } else {
-      // Use all cash, remainder from debt
-      finalCashFromBS = userCashFromBS;
-      finalNewDebt = cashPortionNeeded - userCashFromBS;
-    }
-  } else {
-    // Shortfall - use all user inputs plus additional debt to balance
-    finalCashFromBS = userCashFromBS;
-    finalNewDebt = cashPortionNeeded - userCashFromBS;
-  }
+  // Step 3: Cash from balance sheet (user input, can't exceed remaining)
+  const userCashFromBS = Math.max(0, cashFromBalance || 0);
+  const finalCashFromBS = Math.min(userCashFromBS, remainingToFund);
+  remainingToFund -= finalCashFromBS;
   
-  // Final Sources - guaranteed to equal Uses
+  // Step 4: New debt covers whatever is left
+  const finalNewDebt = Math.max(0, remainingToFund);
+  
+  // Sources and Uses now GUARANTEED to balance
+  const sourcesTotal = finalStockConsideration + netCashApplied + finalCashFromBS + finalNewDebt;
+  const usesTotal = grossUsesAmount;
+  
+  // Final Sources
   const sources = {
     cashFromBalance: finalCashFromBS,
     newDebtRaised: finalNewDebt,
-    stockConsideration,
-    total: finalCashFromBS + finalNewDebt + stockConsideration,
+    stockConsideration: finalStockConsideration,
+    netCashFromTarget: netCashApplied,
+    total: sourcesTotal,
   };
   
   // Final Uses
   const uses = {
     equityValue: purchasePrice,
-    debtPayoff: targetNetDebt, // Target net debt refinanced at close
+    debtPayoff: debtPayoffAmount,
     transactionFees,
-    total: totalUsesAmount, // = Enterprise Value + Fees
+    total: usesTotal,
   };
   
-  // Validation: Sources should equal Uses exactly (gap should be 0)
+  // Validation: Gap should ALWAYS be 0 now
   const sourcesUsesGap = sources.total - uses.total;
 
   return {
@@ -792,33 +792,53 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   suSheet.getCell("A6").value = "Stock Consideration";
   suSheet.getCell("B6").value = sourcesAndUses.sources.stockConsideration;
   suSheet.getCell("B6").numFmt = currencyFormat;
-  suSheet.getCell("C6").value = sourcesAndUses.sources.stockConsideration / sourcesAndUses.sources.total;
+  suSheet.getCell("C6").value = sourcesAndUses.sources.total > 0 ? sourcesAndUses.sources.stockConsideration / sourcesAndUses.sources.total : 0;
   suSheet.getCell("C6").numFmt = percentFormat;
 
-  suSheet.getCell("A7").value = "TOTAL SOURCES";
-  suSheet.getCell("B7").value = sourcesAndUses.sources.total;
-  suSheet.getCell("B7").numFmt = currencyFormat;
-  suSheet.getRow(7).font = { bold: true };
+  let sourceRowOffset = 7;
+  // Include net cash from target if applicable (net cash acquisition)
+  if (sourcesAndUses.sources.netCashFromTarget && sourcesAndUses.sources.netCashFromTarget > 0) {
+    suSheet.getCell(`A${sourceRowOffset}`).value = "Net Cash from Target";
+    suSheet.getCell(`B${sourceRowOffset}`).value = sourcesAndUses.sources.netCashFromTarget;
+    suSheet.getCell(`B${sourceRowOffset}`).numFmt = currencyFormat;
+    suSheet.getCell(`C${sourceRowOffset}`).value = sourcesAndUses.sources.netCashFromTarget / sourcesAndUses.sources.total;
+    suSheet.getCell(`C${sourceRowOffset}`).numFmt = percentFormat;
+    sourceRowOffset++;
+  }
 
-  suSheet.getCell("A9").value = "USES";
-  suSheet.getRow(9).font = { bold: true };
+  suSheet.getCell(`A${sourceRowOffset}`).value = "TOTAL SOURCES";
+  suSheet.getCell(`B${sourceRowOffset}`).value = sourcesAndUses.sources.total;
+  suSheet.getCell(`B${sourceRowOffset}`).numFmt = currencyFormat;
+  suSheet.getRow(sourceRowOffset).font = { bold: true };
 
-  suSheet.getCell("A10").value = "Target Equity Value";
-  suSheet.getCell("B10").value = sourcesAndUses.uses.equityValue;
-  suSheet.getCell("B10").numFmt = currencyFormat;
+  const usesStartRow = sourceRowOffset + 2;
+  suSheet.getCell(`A${usesStartRow}`).value = "USES";
+  suSheet.getRow(usesStartRow).font = { bold: true };
 
-  suSheet.getCell("A11").value = "Target Net Debt Payoff";
-  suSheet.getCell("B11").value = sourcesAndUses.uses.debtPayoff;
-  suSheet.getCell("B11").numFmt = currencyFormat;
+  let usesRow = usesStartRow + 1;
+  suSheet.getCell(`A${usesRow}`).value = "Target Equity Value";
+  suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.equityValue;
+  suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
+  usesRow++;
 
-  suSheet.getCell("A12").value = "Transaction Fees";
-  suSheet.getCell("B12").value = sourcesAndUses.uses.transactionFees;
-  suSheet.getCell("B12").numFmt = currencyFormat;
+  // Only show debt payoff if positive
+  if (sourcesAndUses.uses.debtPayoff > 0) {
+    suSheet.getCell(`A${usesRow}`).value = "Target Net Debt Payoff";
+    suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.debtPayoff;
+    suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
+    usesRow++;
+  }
 
-  suSheet.getCell("A13").value = "TOTAL USES";
-  suSheet.getCell("B13").value = sourcesAndUses.uses.total;
-  suSheet.getCell("B13").numFmt = currencyFormat;
-  suSheet.getRow(13).font = { bold: true };
+  suSheet.getCell(`A${usesRow}`).value = "Transaction Fees";
+  suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.transactionFees;
+  suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
+  usesRow++;
+
+  suSheet.getCell(`A${usesRow}`).value = "TOTAL USES";
+  suSheet.getCell(`B${usesRow}`).value = sourcesAndUses.uses.total;
+  suSheet.getCell(`B${usesRow}`).numFmt = currencyFormat;
+  suSheet.getRow(usesRow).font = { bold: true };
+  const balanceCheckRow = usesRow + 2;
 
   // ============ ACQUIRER PROJECTIONS ============
   const acqSheet = workbook.addWorksheet("Acquirer_Standalone");
@@ -1091,13 +1111,13 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
   }
 
   // ============ BALANCE CHECK (BUG #2 FIX) ============
-  suSheet.getCell("A15").value = "BALANCE CHECK";
-  suSheet.getCell("A15").font = { bold: true };
-  suSheet.getCell("A16").value = "Sources - Uses:";
-  suSheet.getCell("B16").value = sourcesAndUses.gap || 0;
-  suSheet.getCell("B16").numFmt = currencyFormat;
-  suSheet.getCell("C16").value = sourcesAndUses.isBalanced ? "BALANCED" : "NOT BALANCED";
-  suSheet.getCell("C16").font = { 
+  suSheet.getCell(`A${balanceCheckRow}`).value = "BALANCE CHECK";
+  suSheet.getCell(`A${balanceCheckRow}`).font = { bold: true };
+  suSheet.getCell(`A${balanceCheckRow + 1}`).value = "Sources - Uses:";
+  suSheet.getCell(`B${balanceCheckRow + 1}`).value = sourcesAndUses.gap || 0;
+  suSheet.getCell(`B${balanceCheckRow + 1}`).numFmt = currencyFormat;
+  suSheet.getCell(`C${balanceCheckRow + 1}`).value = sourcesAndUses.isBalanced ? "BALANCED" : "NOT BALANCED";
+  suSheet.getCell(`C${balanceCheckRow + 1}`).font = { 
     bold: true,
     color: { argb: sourcesAndUses.isBalanced ? "FF008000" : "FFFF0000" } 
   };
