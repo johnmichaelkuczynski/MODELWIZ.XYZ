@@ -22,7 +22,7 @@ The application uses a monorepo structure, separating client and server.
     - **Finance Panel**: Generates professional Excel financial models from natural language input, producing value-based workbooks with executive summaries, assumptions, projections, valuations, and sensitivity analysis.
       - **DCF Model**: Fully implemented with 3 valuation scenarios (Bear/Base/Bull), 5-year projections, and sensitivity analysis.
       - **LBO Model**: Fully implemented with sources/uses, debt schedules, sponsor returns (IRR/MOIC), exit valuation, and 5-year projections.
-      - **M&A Model**: Fully implemented with accretion/dilution analysis, consideration mix (cash/stock), pro forma 5-year projections, and Sources & Uses. Features separate phase-in schedules for revenue synergies (slower: 20/40/70/90/100%) and cost synergies (faster: 50/80/100/100/100%), with transaction fees calculated as specified percentage of enterprise value.
+      - **M&A Model**: Fully implemented with accretion/dilution analysis, consideration mix (cash/stock), pro forma 5-year projections, and Sources & Uses. Features separate phase-in schedules for revenue synergies (slower: 10/25/50/75/100%) and cost synergies (faster: 30/60/85/95/100%), with transaction fees calculated as specified percentage of enterprise value.
       - **3-Statement Model**: Coming soon.
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
 - **UI/UX**: Utilizes shadcn/ui and TailwindCSS for styling, offering detailed card-based layouts for analysis reports and supporting PDF/text downloads, document upload, and output download.

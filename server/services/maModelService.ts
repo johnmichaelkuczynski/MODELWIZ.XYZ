@@ -131,8 +131,8 @@ DEFAULTS (use if not explicitly stated):
 - Cash/stock mix: 50/50 if not specified
 - Premium: 20-40% for public targets
 - Transaction fees: 1-2% of EV (use 0.02 if not specified)
-- REVENUE synergy phase-in (SLOWER): 20% Y1, 40% Y2, 70% Y3, 90% Y4, 100% Y5
-- COST synergy phase-in (FASTER): 50% Y1, 80% Y2, 100% Y3, 100% Y4, 100% Y5
+- REVENUE synergy phase-in (SLOWER): 10% Y1, 25% Y2, 50% Y3, 75% Y4, 100% Y5
+- COST synergy phase-in (FASTER): 30% Y1, 60% Y2, 85% Y3, 95% Y4, 100% Y5
 - Integration costs: 2-3x annual synergies spread over 3 years
 - Intangible amortization: 10-15 years
 
@@ -331,20 +331,21 @@ export function calculateMAMetrics(assumptions: MAAssumptions) {
   const annualIntangibleAmort = intangibleAssets / intangibleAmortYears;
 
   // Synergies by year - SEPARATE schedules for revenue vs cost synergies
+  // VALIDATED DEFAULTS from Test #2 (CloudCore/DataVault): Rev 10/25/50/75/100, Cost 30/60/85/95/100
   const revenueSynergyRealization = [
     0, 
-    revenueSynergyRealizationY1 || 0.20, 
-    revenueSynergyRealizationY2 || 0.40, 
-    revenueSynergyRealizationY3 || 0.70, 
-    revenueSynergyRealizationY4 || 0.90, 
+    revenueSynergyRealizationY1 || 0.10, 
+    revenueSynergyRealizationY2 || 0.25, 
+    revenueSynergyRealizationY3 || 0.50, 
+    revenueSynergyRealizationY4 || 0.75, 
     revenueSynergyRealizationY5 || 1.0
   ];
   const costSynergyRealization = [
     0, 
-    costSynergyRealizationY1 || 0.50, 
-    costSynergyRealizationY2 || 0.80, 
-    costSynergyRealizationY3 || 1.0, 
-    costSynergyRealizationY4 || 1.0, 
+    costSynergyRealizationY1 || 0.30, 
+    costSynergyRealizationY2 || 0.60, 
+    costSynergyRealizationY3 || 0.85, 
+    costSynergyRealizationY4 || 0.95, 
     costSynergyRealizationY5 || 1.0
   ];
   const revSynergiesByYear = revenueSynergyRealization.map(r => revenueSynergies * r);
