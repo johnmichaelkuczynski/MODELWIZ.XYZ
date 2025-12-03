@@ -40,6 +40,17 @@ The application uses a monorepo structure, separating client and server.
         - **Ratio Analysis**: 50+ ratios across profitability, liquidity, leverage, efficiency, growth, per-share metrics
         - **Charts Data**: Pre-formatted tables for Revenue/EBITDA, Leverage, EPS visualization
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
+    - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis from natural language descriptions.
+      - **Regression Models**: Fully implemented with 7 regression types:
+        - Simple Linear Regression, Multiple Linear Regression, Polynomial Regression
+        - Ridge Regression (L2 regularization), Lasso Regression (L1 regularization), Elastic Net
+        - Logistic Regression (classification)
+        - Output includes: data loading, EDA, preprocessing, model training, cross-validation, evaluation metrics, coefficient interpretation, visualizations, prediction function, model persistence
+        - Downloadable as .py file with complete, executable code
+      - **Machine Learning Models**: Coming soon (Random Forest, XGBoost, Neural Networks, clustering)
+      - **Statistical Forecasting**: Coming soon (ARIMA, SARIMA, Prophet, exponential smoothing)
+      - **Predictive Analytics**: Coming soon (end-to-end pipelines, feature engineering, model comparison)
+      - Default LLM: Zhi 5 (Grok) for data science code generation.
 - **UI/UX**: Utilizes shadcn/ui and TailwindCSS for styling, offering detailed card-based layouts for analysis reports and supporting PDF/text downloads, document upload, and output download.
 
 ## External Dependencies

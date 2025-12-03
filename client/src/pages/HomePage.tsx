@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank, LineChart, FileCode, Search } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -184,6 +184,15 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
   const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi5");
   const [financeDownloadLoading, setFinanceDownloadLoading] = useState(false);
+  
+  // Data Science Panel State
+  const [dataScienceModelType, setDataScienceModelType] = useState<"regression" | "ml" | "forecasting" | "predictive" | null>(null);
+  const [dataScienceInputText, setDataScienceInputText] = useState("");
+  const [dataScienceCustomInstructions, setDataScienceCustomInstructions] = useState("");
+  const [dataScienceLoading, setDataScienceLoading] = useState(false);
+  const [dataScienceResult, setDataScienceResult] = useState<any>(null);
+  const [dataScienceLLMProvider, setDataScienceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi5");
+  const [dataScienceDownloadLoading, setDataScienceDownloadLoading] = useState(false);
   
   // Load writing samples and style presets on component mount
   useEffect(() => {
@@ -684,7 +693,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       } else {
         toast({
           title: "Coming Soon",
-          description: `${modelType.toUpperCase()} model is not yet available.`,
+          description: `This model type is not yet available.`,
           variant: "destructive"
         });
       }
@@ -793,6 +802,134 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceResult(null);
     setShowFinanceCustomization(false);
     setFinanceLoadingPhase("");
+  };
+
+  // Data Science Panel Handlers
+  const handleDataScienceProcess = async (modelType: "regression" | "ml" | "forecasting" | "predictive") => {
+    if (!dataScienceInputText.trim()) {
+      toast({
+        title: "No Input",
+        description: "Please enter a problem description",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setDataScienceModelType(modelType);
+    setDataScienceLoading(true);
+    setDataScienceResult(null);
+
+    try {
+      let endpoint = "";
+      switch (modelType) {
+        case "regression":
+          endpoint = "/api/datascience/parse-regression";
+          break;
+        case "ml":
+        case "forecasting":
+        case "predictive":
+          toast({
+            title: "Coming Soon",
+            description: `${modelType.charAt(0).toUpperCase() + modelType.slice(1)} models are under development`,
+          });
+          setDataScienceLoading(false);
+          return;
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: dataScienceInputText,
+          customInstructions: dataScienceCustomInstructions,
+          llmProvider: dataScienceLLMProvider
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setDataScienceResult(result);
+        toast({
+          title: "Code Generated",
+          description: `${modelType.charAt(0).toUpperCase() + modelType.slice(1)} model code ready - Analysis by ${result.providerUsed}`
+        });
+      } else {
+        throw new Error(result.message || "Failed to generate code");
+      }
+    } catch (error: any) {
+      console.error("Data science error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate code",
+        variant: "destructive"
+      });
+    } finally {
+      setDataScienceLoading(false);
+    }
+  };
+
+  const handleDataScienceDownload = async () => {
+    if (!dataScienceResult?.pythonCode) {
+      toast({
+        title: "No Code",
+        description: "Generate code first before downloading",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setDataScienceDownloadLoading(true);
+
+    try {
+      const response = await fetch("/api/datascience/download-regression", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pythonCode: dataScienceResult.pythonCode,
+          parameters: dataScienceResult.parameters
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to download file");
+      }
+
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get("Content-Disposition");
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : "regression_model.py";
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Download Complete",
+        description: `Saved as ${filename}`
+      });
+    } catch (error: any) {
+      console.error("Download error:", error);
+      toast({
+        title: "Download Failed",
+        description: error.message || "Could not download file",
+        variant: "destructive"
+      });
+    } finally {
+      setDataScienceDownloadLoading(false);
+    }
+  };
+
+  const handleDataScienceClear = () => {
+    setDataScienceInputText("");
+    setDataScienceCustomInstructions("");
+    setDataScienceModelType(null);
+    setDataScienceResult(null);
   };
 
   // Coherence Meter Handlers
@@ -3775,6 +3912,255 @@ Generated on: ${new Date().toLocaleString()}`;
               className="px-6 py-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:hover:bg-red-900/20 flex items-center mx-auto"
               disabled={financeLoading}
               data-testid="button-finance-clear-all"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* DATA SCIENCE MODELS PANEL */}
+      <div className="mt-16 bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/10 dark:to-purple-900/10 p-8 rounded-lg border-2 border-violet-200 dark:border-violet-700">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-violet-900 dark:text-violet-100 mb-3 flex items-center justify-center gap-3">
+              <TrendingUp className="w-8 h-8 text-violet-600" />
+              Data Science Models Panel
+            </h2>
+            <p className="text-lg text-gray-700 dark:text-gray-300 mb-2">
+              Generate production-ready Python code for machine learning and statistical analysis
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Describe your problem in natural language - get complete, executable code with data preprocessing, model training, evaluation, and visualization
+            </p>
+          </div>
+
+          {/* LLM Provider Selection */}
+          <div className="flex justify-center mb-6">
+            <div className="flex items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-lg border border-violet-200 dark:border-violet-700">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">AI Model:</span>
+              <select
+                value={dataScienceLLMProvider}
+                onChange={(e) => setDataScienceLLMProvider(e.target.value as any)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                data-testid="select-datascience-llm"
+              >
+                <option value="zhi5">ZHI 5 (Grok) - Default</option>
+                <option value="zhi1">ZHI 1 (GPT-4o)</option>
+                <option value="zhi2">ZHI 2 (Claude)</option>
+                <option value="zhi3">ZHI 3 (DeepSeek)</option>
+                <option value="zhi4">ZHI 4 (Perplexity)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Input Area */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* Problem Description Input */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-violet-200 dark:border-violet-700">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Problem Description
+              </label>
+              <Textarea
+                value={dataScienceInputText}
+                onChange={(e) => setDataScienceInputText(e.target.value)}
+                placeholder="Describe your data science problem in natural language...
+
+Example: Build me a multiple regression model to predict house prices. The target variable is SalePrice. The features I want to use are: SquareFootage, Bedrooms, Bathrooms, YearBuilt, and GarageSize. Generate synthetic data for 500 houses. Use an 80/20 train-test split with random state 42. Enable feature scaling. Run 5-fold cross-validation."
+                className="min-h-[200px] text-base"
+                disabled={dataScienceLoading}
+                data-testid="textarea-datascience-input"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Include: target variable, features, data source/requirements, model preferences
+              </p>
+            </div>
+
+            {/* Custom Instructions */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border-2 border-violet-200 dark:border-violet-700">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Custom Instructions (Optional)
+              </label>
+              <Textarea
+                value={dataScienceCustomInstructions}
+                onChange={(e) => setDataScienceCustomInstructions(e.target.value)}
+                placeholder="Add any special requirements...
+
+Examples:
+- Use polynomial features with degree 3
+- Include additional visualizations
+- Add hyperparameter tuning with GridSearchCV
+- Generate code compatible with Google Colab
+- Add detailed comments for teaching purposes"
+                className="min-h-[200px] text-base"
+                disabled={dataScienceLoading}
+                data-testid="textarea-datascience-instructions"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Specify output format, additional analysis, or code style preferences
+              </p>
+            </div>
+          </div>
+
+          {/* Function Buttons */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Button
+              onClick={() => handleDataScienceProcess("regression")}
+              disabled={dataScienceLoading || !dataScienceInputText.trim()}
+              className="h-24 bg-gradient-to-br from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg"
+              data-testid="button-datascience-regression"
+            >
+              {dataScienceLoading && dataScienceModelType === "regression" ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                <TrendingUp className="h-6 w-6" />
+              )}
+              <span className="font-bold text-lg">Regression Models</span>
+              <span className="text-xs opacity-80">Linear, Ridge, Lasso, Logistic</span>
+            </Button>
+
+            <Button
+              onClick={() => handleDataScienceProcess("ml")}
+              disabled={true}
+              className="h-24 bg-gradient-to-br from-gray-400 to-gray-500 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg opacity-60 cursor-not-allowed"
+              data-testid="button-datascience-ml"
+            >
+              <Brain className="h-6 w-6" />
+              <span className="font-bold text-lg">Machine Learning</span>
+              <span className="text-xs opacity-80">Coming Soon</span>
+            </Button>
+
+            <Button
+              onClick={() => handleDataScienceProcess("forecasting")}
+              disabled={true}
+              className="h-24 bg-gradient-to-br from-gray-400 to-gray-500 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg opacity-60 cursor-not-allowed"
+              data-testid="button-datascience-forecasting"
+            >
+              <LineChart className="h-6 w-6" />
+              <span className="font-bold text-lg">Statistical Forecasting</span>
+              <span className="text-xs opacity-80">Coming Soon</span>
+            </Button>
+
+            <Button
+              onClick={() => handleDataScienceProcess("predictive")}
+              disabled={true}
+              className="h-24 bg-gradient-to-br from-gray-400 to-gray-500 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg opacity-60 cursor-not-allowed"
+              data-testid="button-datascience-predictive"
+            >
+              <BarChart3 className="h-6 w-6" />
+              <span className="font-bold text-lg">Predictive Analytics</span>
+              <span className="text-xs opacity-80">Coming Soon</span>
+            </Button>
+          </div>
+
+          {/* Results Display */}
+          {dataScienceResult && dataScienceResult.success && (
+            <div className="mb-6 space-y-6">
+              {/* Header with model info and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700">
+                <div>
+                  <h3 className="text-xl font-bold text-violet-900 dark:text-violet-100">
+                    {dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())} Model Generated
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Target: {dataScienceResult.parameters?.targetVariable} | Features: {dataScienceResult.parameters?.featureVariables?.join(', ')} | Analysis by {dataScienceResult.providerUsed}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleDataScienceDownload}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={dataScienceDownloadLoading}
+                  data-testid="button-datascience-download"
+                >
+                  {dataScienceDownloadLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Download Python File
+                </Button>
+              </div>
+
+              {/* Model Parameters Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-center">
+                  <p className="text-sm text-violet-600 dark:text-violet-400">Regression Type</p>
+                  <p className="text-lg font-bold text-violet-900 dark:text-violet-100">
+                    {dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                  </p>
+                </div>
+                <div className="p-4 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-center">
+                  <p className="text-sm text-purple-600 dark:text-purple-400">Test Size</p>
+                  <p className="text-lg font-bold text-purple-900 dark:text-purple-100">
+                    {((dataScienceResult.parameters?.testSize || 0.2) * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <div className="p-4 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-center">
+                  <p className="text-sm text-indigo-600 dark:text-indigo-400">CV Folds</p>
+                  <p className="text-lg font-bold text-indigo-900 dark:text-indigo-100">
+                    {dataScienceResult.parameters?.crossValidationFolds || 5}
+                  </p>
+                </div>
+                <div className="p-4 bg-fuchsia-100 dark:bg-fuchsia-900/30 rounded-lg text-center">
+                  <p className="text-sm text-fuchsia-600 dark:text-fuchsia-400">Feature Scaling</p>
+                  <p className="text-lg font-bold text-fuchsia-900 dark:text-fuchsia-100">
+                    {dataScienceResult.parameters?.scaleFeatures ? 'Enabled' : 'Disabled'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Python Code Preview */}
+              <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                    <FileCode className="w-4 h-4" />
+                    Generated Python Code Preview
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    {dataScienceResult.pythonCode?.split('\n').length || 0} lines
+                  </span>
+                </div>
+                <pre className="text-sm text-green-400 overflow-x-auto max-h-96 overflow-y-auto font-mono">
+                  {dataScienceResult.pythonCode?.slice(0, 3000)}
+                  {dataScienceResult.pythonCode?.length > 3000 && '\n\n... [Download for full code] ...'}
+                </pre>
+              </div>
+
+              {/* Code Sections Description */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700 text-center">
+                  <FileCode className="w-5 h-5 mx-auto mb-1 text-violet-600" />
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Data Loading</p>
+                </div>
+                <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700 text-center">
+                  <Search className="w-5 h-5 mx-auto mb-1 text-violet-600" />
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">EDA</p>
+                </div>
+                <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700 text-center">
+                  <Brain className="w-5 h-5 mx-auto mb-1 text-violet-600" />
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Model Training</p>
+                </div>
+                <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700 text-center">
+                  <BarChart3 className="w-5 h-5 mx-auto mb-1 text-violet-600" />
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Evaluation</p>
+                </div>
+                <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700 text-center">
+                  <LineChart className="w-5 h-5 mx-auto mb-1 text-violet-600" />
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">Visualization</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Clear All Button */}
+          <div className="mt-4 text-center">
+            <Button
+              onClick={handleDataScienceClear}
+              variant="outline"
+              className="px-6 py-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:hover:bg-red-900/20 flex items-center mx-auto"
+              disabled={dataScienceLoading}
+              data-testid="button-datascience-clear-all"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Clear All

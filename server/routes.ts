@@ -17,6 +17,7 @@ import { parseFinancialDescription, generateDCFExcel } from "./services/dcfModel
 import { parseLBODescription, calculateLBOReturns, generateLBOExcel } from "./services/lboModelService";
 import { parseMADescription, calculateMAMetrics, generateMAExcel } from "./services/maModelService";
 import { parseThreeStatementDescription, calculateThreeStatementModel, generateThreeStatementExcel } from "./services/threeStatementModelService";
+import { parseRegressionDescription, generateRegressionPythonCode } from "./services/regressionModelService";
 
 
 // Configure multer for file uploads
@@ -3531,6 +3532,75 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Excel file"
+      });
+    }
+  });
+
+  // ============================================================================
+  // DATA SCIENCE PANEL ENDPOINTS
+  // ============================================================================
+
+  // Data Science Panel - Parse regression description and generate Python code
+  app.post("/api/datascience/parse-regression", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = "grok" } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Problem description is required"
+        });
+      }
+
+      console.log(`Parsing regression description with ${llmProvider}...`);
+      const result = await parseRegressionDescription(
+        description,
+        customInstructions || '',
+        llmProvider
+      );
+
+      res.json({
+        success: true,
+        parameters: result.parameters,
+        pythonCode: result.pythonCode,
+        providerUsed: result.providerUsed
+      });
+
+    } catch (error: any) {
+      console.error("Regression parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate regression model code"
+      });
+    }
+  });
+
+  // Data Science Panel - Download Python file
+  app.post("/api/datascience/download-regression", async (req: Request, res: Response) => {
+    try {
+      const { pythonCode, parameters } = req.body;
+
+      if (!pythonCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Python code is required"
+        });
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+      const targetVar = parameters?.targetVariable || 'model';
+      const filename = `regression_${targetVar.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${timestamp}.py`;
+
+      res.setHeader('Content-Type', 'text/x-python');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(pythonCode));
+      res.send(pythonCode);
+
+    } catch (error: any) {
+      console.error("Regression download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Python file"
       });
     }
   });
