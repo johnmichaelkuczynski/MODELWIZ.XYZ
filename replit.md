@@ -22,7 +22,15 @@ The application uses a monorepo structure, separating client and server.
     - **Finance Panel**: Generates professional Excel financial models from natural language input, producing value-based workbooks with executive summaries, assumptions, projections, valuations, and sensitivity analysis.
       - **DCF Model**: Fully implemented with 3 valuation scenarios (Bear/Base/Bull), 5-year projections, and sensitivity analysis.
       - **LBO Model**: Fully implemented with sources/uses, debt schedules, sponsor returns (IRR/MOIC), exit valuation, and 5-year projections.
-      - **M&A Model**: Fully implemented with accretion/dilution analysis, consideration mix (cash/stock), pro forma 5-year projections, and Sources & Uses. Features separate phase-in schedules for revenue synergies (slower: 10/25/50/75/100%) and cost synergies (faster: 30/60/85/95/100%), with transaction fees calculated as specified percentage of enterprise value.
+      - **M&A Model**: Fully implemented with comprehensive fixes (December 2024):
+        - **Accretion/Dilution Analysis**: Uses acquirerExplicitEPS if user provides it directly (e.g., "earns $3.20 per share") instead of recalculating.
+        - **Sources & Uses**: Now balances exactly. Includes explicit or calculated transaction fees. Cash from balance sheet auto-adjusts to balance.
+        - **Goodwill Calculation**: Correct formula: Purchase Price - Fair Value Net Assets - Identified Intangibles.
+        - **Purchase Price Allocation (PPA) Tab**: New Excel tab with breakdown of customer relationships, developed technology, other intangibles, and amortization schedules.
+        - **Debt Schedule Tab**: New Excel tab with beginning/ending balance, mandatory amortization, and interest expense by year.
+        - **Revenue Synergy Margin**: Applies flow-through margin (e.g., 50%) to revenue synergies for EBITDA impact. Default 100% if not specified.
+        - **Interest Expense**: Properly calculated from debt schedule and included in pro forma projections.
+        - Features separate phase-in schedules for revenue synergies (default: 0/50/100/100/100%) and cost synergies (default: 20/60/100/100/100%).
       - **3-Statement Model**: Coming soon.
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
 - **UI/UX**: Utilizes shadcn/ui and TailwindCSS for styling, offering detailed card-based layouts for analysis reports and supporting PDF/text downloads, document upload, and output download.
