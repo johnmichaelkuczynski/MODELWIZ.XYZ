@@ -16,6 +16,7 @@ import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechT
 import { parseFinancialDescription, generateDCFExcel } from "./services/dcfModelService";
 import { parseLBODescription, calculateLBOReturns, generateLBOExcel } from "./services/lboModelService";
 import { parseMADescription, calculateMAMetrics, generateMAExcel } from "./services/maModelService";
+import { parseThreeStatementDescription, calculateThreeStatementModel, generateThreeStatementExcel } from "./services/threeStatementModelService";
 
 
 // Configure multer for file uploads
@@ -3457,6 +3458,76 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
 
     } catch (error: any) {
       console.error("M&A Excel download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Excel file"
+      });
+    }
+  });
+
+  // Finance Panel - Parse 3-Statement description and return structured data
+  app.post("/api/finance/parse-3statement", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Description is required"
+        });
+      }
+
+      console.log(`Parsing 3-Statement description with ${llmProvider}...`);
+      const { assumptions, providerUsed } = await parseThreeStatementDescription(
+        description,
+        customInstructions,
+        llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5"
+      );
+
+      console.log("Calculating 3-Statement model...");
+      const results = calculateThreeStatementModel(assumptions);
+
+      res.json({
+        success: true,
+        ...results,
+        providerUsed
+      });
+
+    } catch (error: any) {
+      console.error("3-Statement parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse 3-Statement description"
+      });
+    }
+  });
+
+  // Finance Panel - Download 3-Statement Excel from pre-parsed results
+  app.post("/api/finance/download-3statement", async (req: Request, res: Response) => {
+    try {
+      const { result } = req.body;
+
+      if (!result) {
+        return res.status(400).json({
+          success: false,
+          message: "Result data is required"
+        });
+      }
+
+      console.log("Generating 3-Statement Excel from parsed results...");
+      const excelBuffer = await generateThreeStatementExcel(result);
+
+      const companyNameSlug = result.assumptions.companyName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `${companyNameSlug}_3Statement_Model_${dateStr}.xlsx`;
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+      res.send(excelBuffer);
+
+    } catch (error: any) {
+      console.error("3-Statement Excel download error:", error);
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Excel file"

@@ -656,10 +656,35 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           title: "M&A Analysis Complete",
           description: `Accretion/dilution analysis for ${result.assumptions?.acquirerName || 'acquirer'} acquiring ${result.assumptions?.targetName || 'target'}`,
         });
+      } else if (modelType === "threestatement") {
+        setFinanceLoadingPhase(`Parsing 3-Statement with ${providerNames[financeLLMProvider]}...`);
+        
+        const response = await fetch('/api/finance/parse-3statement', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: financeInputText,
+            customInstructions: financeCustomInstructions,
+            llmProvider: financeLLMProvider,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || '3-Statement parsing failed');
+        }
+
+        const result = await response.json();
+        setFinanceResult(result);
+        
+        toast({
+          title: "3-Statement Model Complete",
+          description: `Financial projections for ${result.assumptions?.companyName || 'company'} with ${result.summary?.isBalanced ? 'balanced' : 'unbalanced'} balance sheet`,
+        });
       } else {
         toast({
           title: "Coming Soon",
-          description: `${modelType.toUpperCase()} model is not yet available. DCF, LBO, and M&A are fully functional.`,
+          description: `${modelType.toUpperCase()} model is not yet available.`,
           variant: "destructive"
         });
       }
@@ -699,14 +724,19 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       } else if (financeModelType === "ma") {
         endpoint = '/api/finance/download-ma';
         modelLabel = 'M&A';
+      } else if (financeModelType === "threestatement") {
+        endpoint = '/api/finance/download-3statement';
+        modelLabel = '3-Statement';
       }
+      
+      const requestBody = financeModelType === "threestatement" 
+        ? { result: financeResult }
+        : { assumptions: financeResult.assumptions };
       
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assumptions: financeResult.assumptions,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -3425,6 +3455,314 @@ Generated on: ${new Date().toLocaleString()}`;
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* 3-Statement Model Results Display */}
+          {financeResult && financeResult.success && financeModelType === "threestatement" && financeResult.incomeStatement && (
+            <div className="mb-6 space-y-6">
+              {/* Header with company name and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700">
+                <div>
+                  <h3 className="text-xl font-bold text-indigo-900 dark:text-indigo-100">
+                    {financeResult.assumptions?.companyName} - 3-Statement Integrated Model
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {financeResult.assumptions?.projectionYears || 5} Year Financial Projections | Analysis by {financeResult.providerUsed}
+                  </p>
+                  <p className={`text-xs font-medium ${financeResult.summary?.isBalanced ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {financeResult.summary?.isBalanced ? 'Balance Sheet Check: BALANCED' : 'Balance Sheet Check: ERROR'}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleFinanceDownloadExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={financeDownloadLoading}
+                  data-testid="button-download-3statement-excel"
+                >
+                  {financeDownloadLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download 3-Statement Excel
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Key Metrics Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Revenue CAGR</div>
+                  <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">
+                    {((financeResult.summary?.revenueCAGR || 0) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">EBITDA CAGR</div>
+                  <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                    {((financeResult.summary?.ebitdaCAGR || 0) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Avg ROIC</div>
+                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                    {((financeResult.summary?.averageROIC || 0) * 100).toFixed(1)}%
+                  </div>
+                </div>
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">End Net Debt/EBITDA</div>
+                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                    {(financeResult.summary?.endingNetDebtToEBITDA || 0).toFixed(1)}x
+                  </div>
+                </div>
+              </div>
+
+              {/* Income Statement Table */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700 overflow-x-auto">
+                <h4 className="text-lg font-semibold text-indigo-800 dark:text-indigo-200 mb-4">
+                  Income Statement Projections
+                </h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                      {financeResult.incomeStatement?.years?.map((year: string, idx: number) => (
+                        <th key={idx} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">{year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Revenue ($M)</td>
+                      {financeResult.incomeStatement?.revenue?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-600 dark:text-gray-400 text-xs">Growth %</td>
+                      {financeResult.incomeStatement?.revenueGrowth?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-xs text-gray-500">
+                          {(val * 100).toFixed(1)}%
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Gross Profit ($M)</td>
+                      {financeResult.incomeStatement?.grossProfit?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/50 dark:bg-indigo-900/10">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">EBITDA ($M)</td>
+                      {financeResult.incomeStatement?.ebitda?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-indigo-700 dark:text-indigo-300">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-600 dark:text-gray-400 text-xs">EBITDA Margin %</td>
+                      {financeResult.incomeStatement?.ebitdaMargin?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 text-xs text-gray-500">
+                          {(val * 100).toFixed(1)}%
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">EBIT ($M)</td>
+                      {financeResult.incomeStatement?.ebit?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700 bg-green-50/50 dark:bg-green-900/10">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Net Income ($M)</td>
+                      {financeResult.incomeStatement?.netIncome?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-green-700 dark:text-green-300">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">EPS</td>
+                      {financeResult.incomeStatement?.eps?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
+                          ${val?.toFixed(2)}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Balance Sheet Summary */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700 overflow-x-auto">
+                <h4 className="text-lg font-semibold text-indigo-800 dark:text-indigo-200 mb-4">
+                  Balance Sheet Summary
+                </h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                      {financeResult.balanceSheet?.years?.map((year: string, idx: number) => (
+                        <th key={idx} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">{year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Cash ($M)</td>
+                      {financeResult.balanceSheet?.cash?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-green-600 dark:text-green-400">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700 bg-indigo-50/50 dark:bg-indigo-900/10">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Total Assets ($M)</td>
+                      {financeResult.balanceSheet?.totalAssets?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-indigo-700 dark:text-indigo-300">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">Total Liabilities ($M)</td>
+                      {financeResult.balanceSheet?.totalLiabilities?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-red-600 dark:text-red-400">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="bg-purple-50/50 dark:bg-purple-900/10">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Shareholders' Equity ($M)</td>
+                      {financeResult.balanceSheet?.totalEquity?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-purple-700 dark:text-purple-300">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Cash Flow Summary */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-indigo-200 dark:border-indigo-700 overflow-x-auto">
+                <h4 className="text-lg font-semibold text-indigo-800 dark:text-indigo-200 mb-4">
+                  Cash Flow Summary
+                </h4>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600">
+                      <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Metric</th>
+                      {financeResult.cashFlow?.years?.map((year: string, idx: number) => (
+                        <th key={idx} className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">{year}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">CFO ($M)</td>
+                      {financeResult.cashFlow?.cfo?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">CFI ($M)</td>
+                      {financeResult.cashFlow?.cfi?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-red-600 dark:text-red-400">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300">CFF ($M)</td>
+                      {financeResult.cashFlow?.cff?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-medium text-gray-900 dark:text-gray-100">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="bg-green-50/50 dark:bg-green-900/10">
+                      <td className="py-2 px-3 text-gray-700 dark:text-gray-300 font-semibold">Free Cash Flow ($M)</td>
+                      {financeResult.cashFlow?.freeCashFlow?.map((val: number, idx: number) => (
+                        <td key={idx} className="text-right py-2 px-3 font-bold text-green-700 dark:text-green-300">
+                          ${val?.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Leverage and Ratios */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Leverage Ratios (Year {financeResult.assumptions?.projectionYears || 5})
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Debt/Equity:</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                        {financeResult.ratioAnalysis?.debtToEquity?.[financeResult.assumptions?.projectionYears || 5]?.toFixed(1)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Debt/EBITDA:</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                        {financeResult.ratioAnalysis?.debtToEBITDA?.[financeResult.assumptions?.projectionYears || 5]?.toFixed(1)}x
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Interest Coverage:</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">
+                        {financeResult.ratioAnalysis?.interestCoverage?.[financeResult.assumptions?.projectionYears || 5]?.toFixed(1)}x
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
+                  <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Profitability (Year {financeResult.assumptions?.projectionYears || 5})
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Gross Margin:</span>
+                      <span className="font-semibold text-amber-700 dark:text-amber-300">
+                        {((financeResult.ratioAnalysis?.grossMargin?.[financeResult.assumptions?.projectionYears || 5] || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">EBITDA Margin:</span>
+                      <span className="font-semibold text-amber-700 dark:text-amber-300">
+                        {((financeResult.ratioAnalysis?.ebitdaMargin?.[financeResult.assumptions?.projectionYears || 5] || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Net Margin:</span>
+                      <span className="font-semibold text-amber-700 dark:text-amber-300">
+                        {((financeResult.ratioAnalysis?.netMargin?.[financeResult.assumptions?.projectionYears || 5] || 0) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

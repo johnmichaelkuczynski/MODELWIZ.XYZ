@@ -31,7 +31,14 @@ The application uses a monorepo structure, separating client and server.
         - **Revenue Synergy Margin**: Applies flow-through margin (e.g., 50%) to revenue synergies for EBITDA impact. Default 100% if not specified.
         - **Interest Expense**: Properly calculated from debt schedule and included in pro forma projections.
         - Features separate phase-in schedules for revenue synergies (default: 0/50/100/100/100%) and cost synergies (default: 20/60/100/100/100%).
-      - **3-Statement Model**: Coming soon.
+      - **3-Statement Model**: Fully implemented with comprehensive 11-tab Excel generation:
+        - **Income Statement**: Revenue, COGS, Gross Profit, Operating Expenses, EBITDA, D&A, EBIT, Interest, Taxes, Net Income, EPS
+        - **Balance Sheet**: Assets (Cash, A/R, Inventory, PP&E), Liabilities (A/P, Debt), Shareholders' Equity with balance check (Assets = L + E)
+        - **Cash Flow Statement**: Operating (CFO), Investing (CFI), Financing (CFF) activities with Free Cash Flow
+        - **Circular Reference Handling**: Iterative calculation for revolver draws/paydowns and cash balancing
+        - **Supporting Schedules**: Debt Schedule, Working Capital, PP&E, Shareholders' Equity
+        - **Ratio Analysis**: 50+ ratios across profitability, liquidity, leverage, efficiency, growth, per-share metrics
+        - **Charts Data**: Pre-formatted tables for Revenue/EBITDA, Leverage, EPS visualization
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
 - **UI/UX**: Utilizes shadcn/ui and TailwindCSS for styling, offering detailed card-based layouts for analysis reports and supporting PDF/text downloads, document upload, and output download.
 
