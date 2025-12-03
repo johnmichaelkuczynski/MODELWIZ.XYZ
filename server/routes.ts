@@ -13,6 +13,7 @@ import { type RewriteRequest, type RewriteResponse } from "@shared/schema";
 import { extractTextFromFile } from "./api/documentParser";
 import { sendSimpleEmail } from "./api/simpleEmailService";
 import { upload as speechUpload, processSpeechToText } from "./api/simpleSpeechToText";
+import { parseFinancialDescription, generateDCFExcel } from "./services/dcfModelService";
 
 
 // Configure multer for file uploads
@@ -3222,6 +3223,78 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
       res.status(500).json({ 
         success: false,
         message: error.message || "Validation failed" 
+      });
+    }
+  });
+
+  // Finance Panel - Generate Financial Models
+  app.post("/api/finance/generate-model", async (req: Request, res: Response) => {
+    try {
+      const { modelType, description, customInstructions } = req.body;
+
+      if (!modelType || !description) {
+        return res.status(400).json({
+          success: false,
+          message: "Model type and description are required"
+        });
+      }
+
+      console.log(`Finance Panel - Model Type: ${modelType}, Description length: ${description.length}`);
+
+      if (modelType === "dcf") {
+        // Parse the natural language description to extract assumptions
+        console.log("Parsing financial description with AI...");
+        const assumptions = await parseFinancialDescription(description, customInstructions);
+        console.log("Extracted assumptions:", JSON.stringify(assumptions, null, 2));
+
+        // Generate the DCF Excel file
+        console.log("Generating DCF Excel model...");
+        const excelBuffer = await generateDCFExcel(assumptions);
+
+        // Generate filename
+        const companyNameSlug = assumptions.companyName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+        const dateStr = new Date().toISOString().split('T')[0];
+        const filename = `${companyNameSlug}_DCF_Model_${dateStr}.xlsx`;
+
+        // Send the file
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', excelBuffer.length);
+        res.send(excelBuffer);
+
+      } else if (modelType === "lbo") {
+        // LBO Model - placeholder for future implementation
+        return res.status(501).json({
+          success: false,
+          message: "LBO Model coming soon - DCF Model is currently available"
+        });
+
+      } else if (modelType === "ma") {
+        // M&A Model - placeholder for future implementation  
+        return res.status(501).json({
+          success: false,
+          message: "M&A Model coming soon - DCF Model is currently available"
+        });
+
+      } else if (modelType === "threestatement") {
+        // 3-Statement Model - placeholder for future implementation
+        return res.status(501).json({
+          success: false,
+          message: "3-Statement Model coming soon - DCF Model is currently available"
+        });
+
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid model type. Supported types: dcf, lbo, ma, threestatement"
+        });
+      }
+
+    } catch (error: any) {
+      console.error("Finance Model Generation error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Model generation failed"
       });
     }
   });

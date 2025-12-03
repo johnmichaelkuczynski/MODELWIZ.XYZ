@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -173,6 +173,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [selectedCoherenceChunks, setSelectedCoherenceChunks] = useState<string[]>([]);
   const [showCoherenceChunkSelector, setShowCoherenceChunkSelector] = useState(false);
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
+  
+  // Finance Panel State
+  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | null>(null);
+  const [financeInputText, setFinanceInputText] = useState("");
+  const [financeCustomInstructions, setFinanceCustomInstructions] = useState("");
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeResult, setFinanceResult] = useState<any>(null);
+  const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
   
   // Load writing samples and style presets on component mount
   useEffect(() => {
@@ -544,6 +552,84 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setValidatorMode(null);
     setShowValidatorCustomization(false);
     setValidatorCustomInstructions("");
+  };
+
+  // Finance Panel Handler
+  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement") => {
+    if (!financeInputText.trim()) {
+      toast({
+        title: "No Input",
+        description: "Please describe the company financials and projections",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setFinanceModelType(modelType);
+    setFinanceLoading(true);
+    setFinanceResult(null);
+
+    try {
+      const response = await fetch('/api/finance/generate-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modelType,
+          description: financeInputText,
+          customInstructions: financeCustomInstructions,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Model generation failed');
+      }
+
+      // Handle file download
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${modelType.toUpperCase()}_Model_${new Date().toISOString().split('T')[0]}.xlsx`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setFinanceResult({ success: true, filename });
+      toast({
+        title: "Model Generated!",
+        description: `${modelType.toUpperCase()} model downloaded as ${filename}`,
+      });
+    } catch (error: any) {
+      console.error('Finance model error:', error);
+      toast({
+        title: "Generation Failed",
+        description: error.message || "An error occurred during model generation.",
+        variant: "destructive",
+      });
+    } finally {
+      setFinanceLoading(false);
+    }
+  };
+
+  const handleFinanceClear = () => {
+    setFinanceInputText("");
+    setFinanceCustomInstructions("");
+    setFinanceModelType(null);
+    setFinanceResult(null);
+    setShowFinanceCustomization(false);
   };
 
   // Coherence Meter Handlers
@@ -2241,6 +2327,225 @@ Generated on: ${new Date().toLocaleString()}`;
       </Dialog>
       </div>
       {/* END OF HIDDEN INTELLIGENCE ANALYSIS TOOL */}
+
+      {/* FINANCE PANEL - Financial Modeling Tools */}
+      <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 p-8 rounded-lg border-2 border-blue-200 dark:border-blue-700">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center justify-center gap-3">
+              <TrendingUp className="w-8 h-8 text-blue-600" />
+              Finance Panel
+            </h2>
+            <p className="text-lg text-gray-700 dark:text-gray-300 mb-2">
+              Generate professional financial models with working Excel formulas
+            </p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              DCF valuation, LBO analysis, M&A modeling, and integrated 3-statement models
+            </p>
+          </div>
+
+          {/* Input Area */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200">
+                Describe Company Financials & Projections
+              </label>
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file, setFinanceInputText);
+                  }}
+                  data-testid="input-finance-upload"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+                  }}
+                  data-testid="button-finance-upload"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload Document
+                </Button>
+              </label>
+            </div>
+            <Textarea
+              value={financeInputText}
+              onChange={(e) => setFinanceInputText(e.target.value)}
+              placeholder="Describe the company financials in natural language. Example: 'Build me a DCF model for CloudTech Inc. Current revenue is $850 million, growing at 35% for years 1-2, 28% in year 3, then 20% in years 4-5. Terminal growth rate of 4%. Current EBITDA margin is 18%, expanding to 32% by year 5. D&A at 6% of revenue, CapEx at 8%, NWC at 12%. Tax rate 21%. WACC is 11.5%. The company has $420M debt and $130M cash with 75M shares outstanding.'"
+              className="min-h-[200px] font-mono text-sm"
+              data-testid="textarea-finance-input"
+            />
+          </div>
+
+          {/* Four Model Type Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Button
+              onClick={() => {
+                setShowFinanceCustomization(prev => financeModelType === "dcf" ? !prev : true);
+                setFinanceModelType("dcf");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto ${
+                financeModelType === "dcf" 
+                  ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-2 border-blue-300"
+              }`}
+              disabled={financeLoading}
+              data-testid="button-dcf-model"
+            >
+              <Calculator className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">DCF Model</span>
+              <span className="text-xs mt-1 text-center opacity-80">Discounted Cash Flow</span>
+            </Button>
+
+            <Button
+              onClick={() => {
+                setShowFinanceCustomization(prev => financeModelType === "lbo" ? !prev : true);
+                setFinanceModelType("lbo");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto ${
+                financeModelType === "lbo" 
+                  ? "bg-purple-600 hover:bg-purple-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-700 dark:text-purple-300 border-2 border-purple-300"
+              }`}
+              disabled={financeLoading}
+              data-testid="button-lbo-model"
+            >
+              <DollarSign className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">LBO Model</span>
+              <span className="text-xs mt-1 text-center opacity-80">Leveraged Buyout</span>
+            </Button>
+
+            <Button
+              onClick={() => {
+                setShowFinanceCustomization(prev => financeModelType === "ma" ? !prev : true);
+                setFinanceModelType("ma");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto ${
+                financeModelType === "ma" 
+                  ? "bg-green-600 hover:bg-green-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/20 text-green-700 dark:text-green-300 border-2 border-green-300"
+              }`}
+              disabled={financeLoading}
+              data-testid="button-ma-model"
+            >
+              <TrendingUp className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">M&A Model</span>
+              <span className="text-xs mt-1 text-center opacity-80">Merger & Acquisition</span>
+            </Button>
+
+            <Button
+              onClick={() => {
+                setShowFinanceCustomization(prev => financeModelType === "threestatement" ? !prev : true);
+                setFinanceModelType("threestatement");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto ${
+                financeModelType === "threestatement" 
+                  ? "bg-orange-600 hover:bg-orange-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20 text-orange-700 dark:text-orange-300 border-2 border-orange-300"
+              }`}
+              disabled={financeLoading}
+              data-testid="button-3statement-model"
+            >
+              <FileSpreadsheet className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">3-Statement</span>
+              <span className="text-xs mt-1 text-center opacity-80">Integrated Financials</span>
+            </Button>
+          </div>
+
+          {/* Customization Panel - Appears when model type is selected */}
+          {showFinanceCustomization && financeModelType && (
+            <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-blue-200 dark:border-blue-700">
+              <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-3">
+                {financeModelType === "dcf" && "DCF Model Customization"}
+                {financeModelType === "lbo" && "LBO Model Customization"}
+                {financeModelType === "ma" && "M&A Model Customization"}
+                {financeModelType === "threestatement" && "3-Statement Model Customization"}
+              </h3>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Custom Instructions (Optional)
+                </label>
+                <Textarea
+                  value={financeCustomInstructions}
+                  onChange={(e) => setFinanceCustomInstructions(e.target.value)}
+                  placeholder={
+                    financeModelType === "dcf" 
+                      ? "Add specific instructions for DCF model... (e.g., 'Include sensitivity analysis for WACC range 8-14%', 'Add football field chart', 'Use specific terminal multiple instead of perpetuity growth')"
+                      : financeModelType === "lbo"
+                      ? "Add specific instructions for LBO model... (e.g., 'Model 5-year hold period', 'Include management equity rollover', 'Target 3x MOIC')"
+                      : financeModelType === "ma"
+                      ? "Add specific instructions for M&A model... (e.g., 'Model accretion/dilution analysis', 'Include synergy assumptions', 'Compare cash vs stock deal')"
+                      : "Add specific instructions for 3-statement model... (e.g., 'Include quarterly breakdown', 'Add working capital schedule', 'Model debt covenants')"
+                  }
+                  className="min-h-[100px]"
+                  data-testid="textarea-finance-custom-instructions"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => handleFinanceModelGenerate(financeModelType)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white flex items-center"
+                  disabled={financeLoading || !financeInputText.trim()}
+                  data-testid="button-generate-finance-model"
+                >
+                  {financeLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating Model...
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="w-4 h-4 mr-2" />
+                      Generate Excel Model
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFinanceCustomization(false)}
+                  data-testid="button-cancel-finance-customization"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Result notification */}
+          {financeResult && financeResult.success && (
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+              <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                <Download className="w-5 h-5" />
+                <span className="font-medium">Model downloaded: {financeResult.filename}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Clear All Button */}
+          <div className="mt-4 text-center">
+            <Button
+              onClick={handleFinanceClear}
+              variant="outline"
+              className="px-6 py-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:hover:bg-red-900/20 flex items-center mx-auto"
+              disabled={financeLoading}
+              data-testid="button-finance-clear-all"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* TEXT MODEL VALIDATOR - Interpretive Generosity Framework */}
       <div className="mt-16 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 p-8 rounded-lg border-2 border-emerald-200 dark:border-emerald-700">
