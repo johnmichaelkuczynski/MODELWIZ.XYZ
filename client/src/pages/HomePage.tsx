@@ -826,6 +826,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           endpoint = "/api/datascience/parse-regression";
           break;
         case "ml":
+          endpoint = "/api/datascience/parse-ml";
+          break;
         case "forecasting":
         case "predictive":
           toast({
@@ -882,7 +884,10 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setDataScienceDownloadLoading(true);
 
     try {
-      const response = await fetch("/api/datascience/download-regression", {
+      const isML = dataScienceResult.parameters?.problemType && ['classification', 'clustering', 'dimensionality_reduction'].includes(dataScienceResult.parameters.problemType);
+      const downloadEndpoint = isML ? "/api/datascience/download-ml" : "/api/datascience/download-regression";
+      
+      const response = await fetch(downloadEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -898,7 +903,8 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const blob = await response.blob();
       const contentDisposition = response.headers.get("Content-Disposition");
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const filename = filenameMatch ? filenameMatch[1] : "regression_model.py";
+      const defaultFilename = isML ? "ml_model.py" : "regression_model.py";
+      const filename = filenameMatch ? filenameMatch[1] : defaultFilename;
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -4022,13 +4028,17 @@ Examples:
 
             <Button
               onClick={() => handleDataScienceProcess("ml")}
-              disabled={true}
-              className="h-24 bg-gradient-to-br from-gray-400 to-gray-500 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg opacity-60 cursor-not-allowed"
+              disabled={dataScienceLoading || !dataScienceInputText.trim()}
+              className="h-24 bg-gradient-to-br from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg"
               data-testid="button-datascience-ml"
             >
-              <Brain className="h-6 w-6" />
+              {dataScienceLoading && dataScienceModelType === "ml" ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                <Brain className="h-6 w-6" />
+              )}
               <span className="font-bold text-lg">Machine Learning</span>
-              <span className="text-xs opacity-80">Coming Soon</span>
+              <span className="text-xs opacity-80">Classification, Clustering, PCA</span>
             </Button>
 
             <Button
@@ -4058,13 +4068,18 @@ Examples:
           {dataScienceResult && dataScienceResult.success && (
             <div className="mb-6 space-y-6">
               {/* Header with model info and download button */}
-              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700">
+              <div className="flex items-center justify-between flex-wrap gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700">
                 <div>
                   <h3 className="text-xl font-bold text-violet-900 dark:text-violet-100">
-                    {dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())} Model Generated
+                    {dataScienceResult.parameters?.problemType 
+                      ? `${dataScienceResult.parameters.problemType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())} - ${dataScienceResult.parameters.modelType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Auto'} Model`
+                      : `${dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Regression'} Model Generated`
+                    }
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Target: {dataScienceResult.parameters?.targetVariable} | Features: {dataScienceResult.parameters?.featureVariables?.join(', ')} | Analysis by {dataScienceResult.providerUsed}
+                    {dataScienceResult.parameters?.targetVariable && `Target: ${dataScienceResult.parameters.targetVariable} | `}
+                    {dataScienceResult.parameters?.featureVariables?.length > 0 && `Features: ${dataScienceResult.parameters.featureVariables.slice(0, 3).join(', ')}${dataScienceResult.parameters.featureVariables.length > 3 ? '...' : ''} | `}
+                    Analysis by {dataScienceResult.providerUsed}
                   </p>
                 </div>
                 <Button
@@ -4082,30 +4097,50 @@ Examples:
                 </Button>
               </div>
 
-              {/* Model Parameters Summary */}
+              {/* Model Parameters Summary - Adaptive for both Regression and ML */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-center">
-                  <p className="text-sm text-violet-600 dark:text-violet-400">Regression Type</p>
+                  <p className="text-sm text-violet-600 dark:text-violet-400">
+                    {dataScienceResult.parameters?.problemType ? 'Problem Type' : 'Regression Type'}
+                  </p>
                   <p className="text-lg font-bold text-violet-900 dark:text-violet-100">
-                    {dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                    {dataScienceResult.parameters?.problemType 
+                      ? dataScienceResult.parameters.problemType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                      : dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                    }
                   </p>
                 </div>
                 <div className="p-4 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-center">
-                  <p className="text-sm text-purple-600 dark:text-purple-400">Test Size</p>
+                  <p className="text-sm text-purple-600 dark:text-purple-400">
+                    {dataScienceResult.parameters?.problemType ? 'Model Type' : 'Test Size'}
+                  </p>
                   <p className="text-lg font-bold text-purple-900 dark:text-purple-100">
-                    {((dataScienceResult.parameters?.testSize || 0.2) * 100).toFixed(0)}%
+                    {dataScienceResult.parameters?.problemType 
+                      ? (dataScienceResult.parameters.modelType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Auto')
+                      : `${((dataScienceResult.parameters?.testSize || 0.2) * 100).toFixed(0)}%`
+                    }
                   </p>
                 </div>
                 <div className="p-4 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-center">
-                  <p className="text-sm text-indigo-600 dark:text-indigo-400">CV Folds</p>
+                  <p className="text-sm text-indigo-600 dark:text-indigo-400">
+                    {dataScienceResult.parameters?.problemType === 'clustering' ? 'Clusters' : 'CV Folds'}
+                  </p>
                   <p className="text-lg font-bold text-indigo-900 dark:text-indigo-100">
-                    {dataScienceResult.parameters?.crossValidationFolds || 5}
+                    {dataScienceResult.parameters?.problemType === 'clustering'
+                      ? (dataScienceResult.parameters.nClusters || 'Auto')
+                      : (dataScienceResult.parameters?.cvFolds || dataScienceResult.parameters?.crossValidationFolds || 5)
+                    }
                   </p>
                 </div>
                 <div className="p-4 bg-fuchsia-100 dark:bg-fuchsia-900/30 rounded-lg text-center">
-                  <p className="text-sm text-fuchsia-600 dark:text-fuchsia-400">Feature Scaling</p>
+                  <p className="text-sm text-fuchsia-600 dark:text-fuchsia-400">
+                    {dataScienceResult.parameters?.problemType ? 'Tuning' : 'Feature Scaling'}
+                  </p>
                   <p className="text-lg font-bold text-fuchsia-900 dark:text-fuchsia-100">
-                    {dataScienceResult.parameters?.scaleFeatures ? 'Enabled' : 'Disabled'}
+                    {dataScienceResult.parameters?.problemType 
+                      ? (dataScienceResult.parameters.hyperparameterTuning?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Random')
+                      : (dataScienceResult.parameters?.scaleFeatures ? 'Enabled' : 'Disabled')
+                    }
                   </p>
                 </div>
               </div>

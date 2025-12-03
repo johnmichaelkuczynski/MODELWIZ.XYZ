@@ -3605,6 +3605,76 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
     }
   });
 
+  // Data Science Panel - Parse ML Model Description
+  app.post("/api/datascience/parse-ml", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider = "ZHI 5" } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Problem description is required"
+        });
+      }
+
+      console.log(`Parsing ML model description with ${llmProvider}...`);
+      const { parseMLDescription, generateMLPythonCode } = await import('./services/mlModelService');
+      
+      const parameters = await parseMLDescription(
+        description,
+        customInstructions || '',
+        llmProvider
+      );
+
+      const pythonCode = generateMLPythonCode(parameters);
+
+      res.json({
+        success: true,
+        parameters,
+        pythonCode,
+        providerUsed: llmProvider
+      });
+
+    } catch (error: any) {
+      console.error("ML model parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate ML model code"
+      });
+    }
+  });
+
+  // Data Science Panel - Download ML Model Python file
+  app.post("/api/datascience/download-ml", async (req: Request, res: Response) => {
+    try {
+      const { pythonCode, parameters } = req.body;
+
+      if (!pythonCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Python code is required"
+        });
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+      const problemType = parameters?.problemType || 'ml';
+      const modelType = parameters?.modelType || 'model';
+      const filename = `ml_${problemType}_${modelType}_${timestamp}.py`;
+
+      res.setHeader('Content-Type', 'text/x-python');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(pythonCode));
+      res.send(pythonCode);
+
+    } catch (error: any) {
+      console.error("ML model download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Python file"
+      });
+    }
+  });
+
   // Finance Panel - Generate Financial Models (legacy endpoint, kept for compatibility)
   app.post("/api/finance/generate-model", async (req: Request, res: Response) => {
     try {
