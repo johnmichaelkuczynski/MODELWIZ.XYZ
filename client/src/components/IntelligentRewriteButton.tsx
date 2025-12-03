@@ -136,7 +136,7 @@ const IntelligentRewriteButton: React.FC<IntelligentRewriteButtonProps> = ({
             <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
               <div className="flex-1">
                 <Label htmlFor="external-knowledge" className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  Use External Knowledge (AnalyticPhilosophy.net)
+                  USE ZHI DATABASE (AnalyticPhilosophy.net)
                 </Label>
                 <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
                   When enabled, MAXINTEL fetches research passages and citations from the Zhi knowledge base
