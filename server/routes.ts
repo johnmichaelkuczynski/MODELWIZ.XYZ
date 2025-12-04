@@ -3629,14 +3629,64 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
       }
 
       console.log(`Parsing IPO description with ${llmProvider}...`);
+      console.log("Description length:", description.length, "chars");
       const { assumptions, providerUsed } = await parseIPODescription(
         description,
         llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5",
         customInstructions
       );
 
+      // Log key parsed values for debugging
+      console.log("Parsed assumptions:", {
+        companyName: assumptions.companyName,
+        fairValuePerShare: assumptions.fairValuePerShare,
+        indicatedPriceRangeLow: assumptions.indicatedPriceRangeLow,
+        indicatedPriceRangeHigh: assumptions.indicatedPriceRangeHigh,
+        primaryDollarRaiseM: assumptions.primaryDollarRaiseM,
+        primarySharesOffered: assumptions.primarySharesOffered,
+        sharesOutstandingPreIPO: assumptions.sharesOutstandingPreIPO,
+        ntmRevenue: assumptions.ntmRevenue,
+        peerMedianEVRevenue: assumptions.peerMedianEVRevenue,
+        totalRaNPV: assumptions.totalRaNPV,
+        peerMedianEVRaNPV: assumptions.peerMedianEVRaNPV,
+      });
+
       console.log("Calculating IPO pricing matrix...");
       const results = calculateIPOPricing(assumptions);
+
+      // Check if pricing failed due to missing data
+      if (results.recommendedPrice === 0 && results.pricingMatrix.length === 0) {
+        // Return 400 with clear error message instead of 200 with $0
+        return res.status(400).json({
+          success: false,
+          message: results.memoText || "Cannot compute IPO pricing - missing required valuation data",
+          missingData: true,
+          requiredInputs: [
+            "indicatedPriceRangeLow and indicatedPriceRangeHigh (e.g., $20-$24)",
+            "fairValuePerShare (e.g., DCF value of $22/share)",
+            "primaryDollarRaiseM with primarySharesOffered (e.g., raise $150M by selling 6M shares)",
+            "peer multiples: peerMedianEVRevenue with ntmRevenue, or peerMedianEVRaNPV with totalRaNPV for biotech"
+          ],
+          sampleInput: `Example IPO input:
+
+Company: NovaPharma Inc.
+Sector: biotech
+Shares Outstanding Pre-IPO: 45,000,000
+Primary Dollar Raise: $175M
+Fair Value Per Share (raNPV): $28
+Price Range: $22 - $26
+Current Cash: $85M
+Current Debt: $15M
+Order Book:
+  - $26+: 2.1x oversubscribed
+  - $24+: 3.8x oversubscribed
+  - $22+: 5.5x oversubscribed
+Peer Median EV/raNPV: 2.4x
+Founders Ownership: 35%
+Underwriting Fee: 7%`,
+          providerUsed
+        });
+      }
 
       res.json({
         success: true,

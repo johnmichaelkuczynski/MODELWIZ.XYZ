@@ -709,6 +709,28 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
         if (!response.ok) {
           const errorData = await response.json();
+          // Check if this is a missing data error with sample input
+          if (errorData.missingData && errorData.sampleInput) {
+            // Set result with error message and sample for display
+            setFinanceResult({
+              success: false,
+              missingData: true,
+              memoText: `MISSING REQUIRED DATA\n\n${errorData.message}\n\nREQUIRED INPUTS (provide at least one):\n${errorData.requiredInputs?.map((r: string) => `• ${r}`).join('\n')}\n\n${errorData.sampleInput}`,
+              providerUsed: errorData.providerUsed,
+              recommendedPrice: 0,
+              recommendedRangeLow: 0,
+              recommendedRangeHigh: 0,
+              pricingMatrix: [],
+              rationale: [],
+              assumptions: { companyName: 'Unknown' }
+            });
+            toast({
+              title: "Missing Valuation Data",
+              description: "Your input needs pricing data like fair value, price range, or raise amount. See the recommendation panel for a sample.",
+              variant: "destructive",
+            });
+            return;
+          }
           throw new Error(errorData.message || 'IPO pricing failed');
         }
 
