@@ -2744,6 +2744,28 @@ Generated on: ${new Date().toLocaleString()}`;
             />
           </div>
 
+          {/* AI Model Selection - Always Visible */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mb-6">
+            <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
+              AI Model Selection
+            </label>
+            <Select value={financeLLMProvider} onValueChange={(value: "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5") => setFinanceLLMProvider(value)}>
+              <SelectTrigger className="w-full max-w-xs" data-testid="select-finance-llm-main">
+                <SelectValue placeholder="Select AI Model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zhi5">ZHI 5 (Grok) - Default</SelectItem>
+                <SelectItem value="zhi1">ZHI 1 (GPT-4o)</SelectItem>
+                <SelectItem value="zhi2">ZHI 2 (Claude)</SelectItem>
+                <SelectItem value="zhi3">ZHI 3 (DeepSeek)</SelectItem>
+                <SelectItem value="zhi4">ZHI 4 (Perplexity)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Choose which AI model will analyze your financial data and generate the Excel model. Grok is recommended for financial analysis.
+            </p>
+          </div>
+
           {/* Four Model Type Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Button
