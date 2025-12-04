@@ -2576,7 +2576,7 @@ Structural understanding is always understanding of relationships. Observational
   // Text Model Validator endpoint
   app.post("/api/text-model-validator", async (req: Request, res: Response) => {
     try {
-      const { text, mode, targetDomain, fidelityLevel, mathFramework, constraintType, rigorLevel, customInstructions, truthMapping, mathTruthMapping, literalTruth } = req.body;
+      const { text, mode, targetDomain, fidelityLevel, mathFramework, constraintType, rigorLevel, customInstructions, truthMapping, mathTruthMapping, literalTruth, llmProvider } = req.body;
 
       if (!text || !mode) {
         return res.status(400).json({ 
@@ -3084,29 +3084,105 @@ Your goal is not to "satisfy axioms in some model" but to FIND A MODEL WHERE EVE
         });
       }
 
-      // Call the AI model (using Claude for sophisticated text analysis)
-      const Anthropic = (await import('@anthropic-ai/sdk')).default;
-      const anthropic = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      });
+      // Call the AI model (support multiple providers, default to Grok/ZHI 5)
+      const provider = llmProvider || 'zhi5'; // Default to Grok (ZHI 5)
+      let output = '';
+      
+      console.log(`[Text Model Validator] Using provider: ${provider}`);
 
-      const message = await anthropic.messages.create({
-        model: "claude-3-7-sonnet-20250219", // the newest Anthropic model is "claude-3-7-sonnet-20250219" which was released February 24, 2025
-        max_tokens: 4096,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: userPrompt
-          }
-        ]
-      });
-
-      let output = message.content[0].type === 'text' ? message.content[0].text : '';
+      if (provider === 'zhi1') {
+        // OpenAI GPT-4
+        const OpenAI = (await import('openai')).default;
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 4096,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ]
+        });
+        output = completion.choices[0]?.message?.content || '';
+      } else if (provider === 'zhi2') {
+        // Anthropic Claude
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+        const message = await anthropic.messages.create({
+          model: "claude-3-7-sonnet-20250219",
+          max_tokens: 4096,
+          temperature: 0.7,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }]
+        });
+        output = message.content[0].type === 'text' ? message.content[0].text : '';
+      } else if (provider === 'zhi3') {
+        // DeepSeek
+        const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            max_tokens: 4096,
+            temperature: 0.7,
+          }),
+        });
+        const data = await response.json();
+        output = data.choices?.[0]?.message?.content || '';
+      } else if (provider === 'zhi4') {
+        // Perplexity
+        const response = await fetch('https://api.perplexity.ai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'sonar-pro',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            max_tokens: 4096,
+            temperature: 0.7,
+          }),
+        });
+        const data = await response.json();
+        output = data.choices?.[0]?.message?.content || '';
+      } else {
+        // Default: Grok (ZHI 5)
+        const response = await fetch('https://api.x.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.GROK_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'grok-3',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            max_tokens: 4096,
+            temperature: 0.7,
+          }),
+        });
+        const data = await response.json();
+        output = data.choices?.[0]?.message?.content || '';
+      }
 
       // If literal truth mode is enabled, apply rule-based softening and verification
+      // Note: For literal truth verification, we always use Claude for consistency
       if (literalTruth && (mode === 'truth-isomorphism' || mode === 'math-truth-select')) {
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         // STEP 1: Rule-based quantifier softening (deterministic pass)
         const softenQuantifiers = (text: string): string => {
           let softened = text;

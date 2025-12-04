@@ -16,7 +16,7 @@ The application uses a monorepo structure, separating client and server.
     - **Intelligent Rewrite Function (MAXINTEL)**: Recursively optimizes text to maximize intelligence scores, supporting custom instructions and optional external knowledge integration.
     - **GPT Bypass Humanizer**: Transforms 100% AI-generated text to 0% AI detection.
     - **Coherence Meter**: Offers two processing strategies (simple chunking, outline-guided) with adjustable aggressiveness, and a dedicated `math-proof-validity` mode for mathematical correctness verification.
-    - **Text Model Validator**: Includes "Truth Select" for truth-value isomorphism and "Math Truth Select" for rigorous first-order model theory and truth-grounded model searching, both supporting literal truth verification.
+    - **Text Model Validator**: Includes "Truth Select" for truth-value isomorphism and "Math Truth Select" for rigorous first-order model theory and truth-grounded model searching, both supporting literal truth verification. Users can select which AI model powers validation (ZHI 1-5), defaulting to Grok (ZHI 5).
     - **AI Chat Assistant**: Features full conversation history tracking and Zhi Database integration for contextual philosophical content.
     - **Conservative Reconstruction**: "Charitable Interpretation" mode produces self-contained, coherent essays articulating a text's unified argument.
     - **Finance Panel**: Generates professional Excel financial models from natural language input, producing value-based workbooks with executive summaries, assumptions, projections, valuations, and sensitivity analysis.

@@ -156,6 +156,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [validatorTruthMapping, setValidatorTruthMapping] = useState<"false-to-true" | "true-to-true" | "true-to-false">("false-to-true");
   const [validatorMathTruthMapping, setValidatorMathTruthMapping] = useState<"make-true" | "keep-true" | "make-false">("make-true");
   const [validatorLiteralTruth, setValidatorLiteralTruth] = useState(false);
+  const [validatorLLMProvider, setValidatorLLMProvider] = useState<string>("zhi5"); // Default to Grok
   
   // Coherence Meter State
   const [coherenceInputText, setCoherenceInputText] = useState("");
@@ -530,6 +531,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           truthMapping: validatorTruthMapping,
           mathTruthMapping: validatorMathTruthMapping,
           literalTruth: validatorLiteralTruth,
+          llmProvider: validatorLLMProvider,
         }),
       });
 
@@ -4565,6 +4567,28 @@ Examples:
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
               Provide specific guidance about the nature of the reconstruction, isomorphism, formalization, etc.
+            </p>
+          </div>
+
+          {/* LLM Provider Selector */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 mt-4">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              AI Model Selection
+            </label>
+            <Select value={validatorLLMProvider} onValueChange={setValidatorLLMProvider}>
+              <SelectTrigger data-testid="select-validator-llm" className="w-full">
+                <SelectValue placeholder="Select AI Model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zhi5">ZHI 5 (Grok) - Default</SelectItem>
+                <SelectItem value="zhi1">ZHI 1 (GPT-4o)</SelectItem>
+                <SelectItem value="zhi2">ZHI 2 (Claude)</SelectItem>
+                <SelectItem value="zhi3">ZHI 3 (DeepSeek)</SelectItem>
+                <SelectItem value="zhi4">ZHI 4 (Perplexity)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Choose which AI model powers the validation. Grok is recommended for most tasks.
             </p>
           </div>
 
