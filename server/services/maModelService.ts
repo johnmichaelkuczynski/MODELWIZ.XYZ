@@ -680,6 +680,10 @@ export async function generateMAExcel(assumptions: MAAssumptions): Promise<Buffe
 
   const results = calculateMAMetrics(assumptions);
   const { acquirerProjections, targetProjections, transactionMetrics, synergies, sourcesAndUses, proFormaProjections, accretionDilution } = results;
+  
+  // Extract commonly used values for sensitivity analysis
+  const proFormaShares = transactionMetrics.proFormaShares;
+  const targetNetDebt = (assumptions.targetNetDebt || 0);
 
   const currencyFormat = '"$"#,##0';
   const percentFormat = "0.0%";
