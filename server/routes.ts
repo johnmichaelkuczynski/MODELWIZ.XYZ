@@ -3313,7 +3313,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Finance Panel - Parse DCF description and return valuation preview
   app.post("/api/finance/parse-dcf", async (req: Request, res: Response) => {
     try {
-      const { description, customInstructions, llmProvider = 'zhi1' } = req.body;
+      const { description, customInstructions, llmProvider = 'zhi2' } = req.body;
 
       if (!description || !description.trim()) {
         return res.status(400).json({
@@ -3395,7 +3395,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Finance Panel - Parse LBO description and return structured data
   app.post("/api/finance/parse-lbo", async (req: Request, res: Response) => {
     try {
-      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+      const { description, customInstructions, llmProvider = "zhi2" } = req.body;
 
       if (!description) {
         return res.status(400).json({
@@ -3470,7 +3470,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Finance Panel - Parse M&A description and return results for preview
   app.post("/api/finance/parse-ma", async (req: Request, res: Response) => {
     try {
-      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+      const { description, customInstructions, llmProvider = "zhi2" } = req.body;
 
       if (!description) {
         return res.status(400).json({
@@ -3548,7 +3548,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Finance Panel - Parse 3-Statement description and return structured data
   app.post("/api/finance/parse-3statement", async (req: Request, res: Response) => {
     try {
-      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+      const { description, customInstructions, llmProvider = "zhi2" } = req.body;
 
       if (!description) {
         return res.status(400).json({
@@ -3618,7 +3618,7 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
   // Finance Panel - Parse IPO description and return pricing recommendation memo
   app.post("/api/finance/parse-ipo", async (req: Request, res: Response) => {
     try {
-      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
+      const { description, customInstructions, llmProvider = "zhi2" } = req.body;
 
       if (!description) {
         return res.status(400).json({

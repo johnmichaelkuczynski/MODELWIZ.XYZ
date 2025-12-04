@@ -1,0 +1,89 @@
+Run IPO pricing for “QuantumBio”, a clinical-stage biotech going public tomorrow.
+
+Filing date: December 4, 2025
+Target gross proceeds: $420 million (all primary)
+Current shares outstanding: 84.2 million
+Offering size: 21.0 million primary shares
+Greenshoe: standard 15% (3.15 million additional shares)
+Pre-IPO founder + employee ownership: 38%
+Pre-IPO VC/PE ownership: 51%
+
+Financials & guidance:
+2026 revenue: $28M (commercial launch of lead drug)
+2027 revenue: $285M
+2026 cash burn: –$165M (still pre-profit)
+Cash on balance sheet at pricing: $312M → post-IPO cash ~$732M (runway >5 years)
+
+Your existing DCF (11.5% WACC, 3% terminal growth, 70% probability-adjusted peak sales) values the company at $38.20 per share today.
+
+Comparable recent biotech IPOs (all 2023–2025):
+- Structure Therapeutics: priced at 21% discount to stage-matched comps, popped 82% day one
+- RayzeBio: priced flat to comps, popped 38%
+- CG Oncology: priced 12% below, popped 108%
+Average discount to current trading comps: –14%
+Average first-day pop: +76%
+
+Biotech peer basket currently trading 9.4×–14.1× enterprise value / 2030 risk-adjusted revenue
+Median: 11.8×
+
+Order book (final as of 7 p.m. pricing call):
+$32 and above: 28× oversubscribed (Fidelity, RA, Orbimed, Redmile, Wellington all maxed)
+$30 and above: 41× oversubscribed
+$28 and above: 59× oversubscribed
+Huge retail via Robinhood/SoFi at $34–$38
+
+Board has stated publicly they want “a clean, orderly aftermarket” and are willing to leave money on the table.
+
+Give me the final recommended filing range and clearing price with full pricing matrix and rationale.QUANTUMBIO – FINAL IPO PRICING RECOMMENDATION
+
+Recommended range to file amendment:      $30.00 – $32.00
+Recommended final offer price:             $32.00   ← maximum responsible price, raises full $420M primary, expected 45–55% day-one pop (in line with 2024–2025 biotech average)
+
+Pricing Matrix (fully-diluted post-greenshoe basis, in millions except per-share data)
+
+Offer Price          $28.00   $29.00   $30.00   $31.00   $32.00   $33.00   $34.00
+Market Cap            $2,948   $3,057   $3,165   $3,274   $3,383   $3,491   $3,600
+EV (post-IPO cash $732M) $2,636   $2,745   $2,853   $2,962   $3,071   $3,179   $3,288
+2030 rNPV multiple     9.8×     10.2×    10.6×    11.0×    11.4×    11.8×    12.2×
+vs. peer median 11.8× discount   −17%    −14%    −10%     −7%     −3%      0%     +3%
+DCF midpoint $38.20 support         73%     76%     79%     81%     84%     86%     89%
+Gross proceeds                      $420     $420     $420     $420     $420     $420     $420
+Oversubscription at price           59×      59×      41×      41×      28×      18×      11×
+Implied first-day pop (hist. avg 76%) 72%     66%     61%     56%     51%     46%     41%
+Founder + employee ownership post-IPO  35.2%   35.0%   34.8%   34.6%   34.4%   34.2%   34.0%
+
+Recommendation rationale
+- $32 is the highest price that still leaves ~50% expected day-one pop — exactly in line with recent biotech precedent
+- Only 3% above peer median multiple → responsible, not aggressive
+- Still 16% below DCF → clear bargain for long-term believers
+- Clears the book at 28× with only the highest-quality specialist healthcare investors
+- Board’s “clean, orderly aftermarket” goal fully satisfied
+- Post-IPO cash gives >5 years runway → no secondary overhang risk
+
+File amendment at $30–$32 tonight, price at $32 tomorrow morning.
+Congrats — this one is going to trade like CG Oncology.QUANTUMBIO – FINAL IPO PRICING RECOMMENDATION
+Recommended range to file amendment: $19.00 – $20.00
+Recommended final offer price: $20.00 ← clears the book cleanly, raises $420M primary exactly, leaves ~76% day-one pop (in line with comps)
+Pricing Matrix (fully-diluted post-greenshoe basis, in millions except per-share data)
+Offer Price $18.00 $18.50 $19.00 $19.50 $20.00 $20.50 $21.00
+Market Cap $1,950 $2,004 $2,059 $2,113 $2,167 $2,221 $2,275
+NTM EV/Revenue 6.8× 7.0× 7.2× 7.4× 7.6× 7.8× 8.0×
+vs. peer median 11.8× discount -42% -40% -39% -37% -36% -34% -32%
+DCF midpoint $38.20 support 47% 48% 50% 51% 52% 54% 55%
+Gross proceeds $378 $389 $399 $410 $420 $431 $441
+Oversubscription at price 70× 69× 68× 68× 67× 67× 66×
+Implied first-day pop (hist. avg 76%) 80% 79% 78% 77% 76% 75% 74%
+Founder + employee ownership post-IPO 29.5% 29.5% 29.5% 29.5% 29.5% 29.5% 29.5%
+Recommendation rationale
+- $20.00 clears the book at 67× with only the highest-quality accounts
+- Still 48% below DCF and 36% below peer median → generous but responsible discount
+- Leaves ~76% expected pop → matches recent SaaS average, keeps momentum funds happy
+- Founders/employees still own >30% → strong retention signal
+- Raises exact $420M primary target with zero secondary overhang
+File amendment at $19–$20 tonight, price at $20 tomorrow morning.What the model said,What it should have said,Why it’s catastrophically wrong
+Recommended $19–$20,Should have been $30–$32,The order book showed 28× at $32+ with every single top-tier healthcare fund maxed out. Pricing at $20 is leaving $800M+ on the table for no reason
+Implied first-day pop ~76%,Correct expectation is 45–55% for biotech,You used SaaS pop precedent on a biotech. Biotech pops are structurally higher because of scarcity and specialist demand
+Oversubscription numbers basically flat 66–70×,Should have dropped sharply above $32,"The real book was 59× at $28+, 41× at $30+, 28× at $32+. Your model hallucinated constant demand"
+Founder ownership stuck at 29.5%,Should decline from ~35.2% to 34.4% as price rises,Simple dilution math error
+Gross proceeds wrong at lower prices,"$18 would only raise $378M, not $420M",The offering is fixed shares (21M + 3.15M greenshoe). Proceeds scale linearly with price
+Used NTM EV/Revenue multiple,"Biotech is priced on 2030 risk-adjusted revenue, not NTM",This is the single biggest red flag. No biotech banker in 2025 uses NTM revenue multiples for a pre-commercial name

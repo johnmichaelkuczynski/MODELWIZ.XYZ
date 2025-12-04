@@ -1,0 +1,32 @@
+URGENT – IPO PRICING FUNCTION IS CURRENTLY DANGEROUS AND UNUSABLE
+
+It just priced a screaming-hot biotech IPO at $20 when the real order book had 28× oversubscribed at $32+ with every single top-tier healthcare fund (Fidelity, RA Capital, Orbimed, Redmile, Wellington) maxed out. That is not a small error – that is a career-ending, mandate-losing, $800M-left-on-the-table catastrophe.
+
+Here are the exact bugs that must be fixed immediately, in this order:
+
+1. Order-book parsing is completely broken  
+   The model is ignoring the actual demand numbers in the prompt and hallucinating flat oversubscription.  
+   FIX: Parse lines like “$32 and above: 28× oversubscribed” literally and drop the oversubscription column exactly at those price levels. Never smooth or invent numbers.
+
+2. Wrong valuation metric for biotech  
+   It used NTM EV/Revenue (SaaS metric) instead of 2030 risk-adjusted revenue multiple (the only metric that matters for pre-commercial biotech).  
+   FIX: Detect sector (biotech, SaaS, fintech, etc.) and automatically switch to the correct benchmark (2030 rNPV for biotech, NTM revenue for SaaS, etc.).
+
+3. Gross proceeds calculation is wrong  
+   Offering is fixed shares (21M primary + 3.15M greenshoe). Proceeds = price × total shares sold.  
+   FIX: Never show $378M at $18. It must be exactly $420M at $20.00 and scale linearly.
+
+4. Founder/employee ownership stuck at 29.5% across all prices  
+   FIX: Ownership must decline as price rises (higher valuation = more dilution for same shares sold).
+
+5. Historical pop precedent is wrong  
+   It used generic 76% average instead of biotech-specific ~45–55% responsible pop (or 80–100%+ when they deliberately underprice).  
+   FIX: Use sector-specific first-day pop history and respect board guidance (“clean, orderly aftermarket” = lower pop).
+
+6. Recommendation logic is inverted  
+   It picked the lowest responsible price instead of the highest responsible price that still leaves an acceptable pop.  
+   FIX: Default rule = push to the absolute highest price the book will bear while keeping expected first-day pop ≤ 60% (unless board explicitly wants a moonshot).
+
+Re-test with this EXACT prompt (do not change a single word) until the output is materially identical to the correct version I gave earlier ($30–$32 range, $32 clearing price).
+
+Prompt to use for final validation:

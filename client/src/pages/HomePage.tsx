@@ -185,7 +185,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [financeLoadingPhase, setFinanceLoadingPhase] = useState<string>("");
   const [financeResult, setFinanceResult] = useState<any>(null);
   const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
-  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi5");
+  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi2");
   const [financeDownloadLoading, setFinanceDownloadLoading] = useState(false);
   
   // Data Science Panel State
@@ -2781,11 +2781,11 @@ Generated on: ${new Date().toLocaleString()}`;
                 <SelectValue placeholder="Select AI Model" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="zhi5">ZHI 5 - Default</SelectItem>
+                <SelectItem value="zhi2">ZHI 2 - Default</SelectItem>
                 <SelectItem value="zhi1">ZHI 1</SelectItem>
-                <SelectItem value="zhi2">ZHI 2</SelectItem>
                 <SelectItem value="zhi3">ZHI 3</SelectItem>
                 <SelectItem value="zhi4">ZHI 4</SelectItem>
+                <SelectItem value="zhi5">ZHI 5</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
@@ -2932,11 +2932,11 @@ Examples:
                     <SelectValue placeholder="Select AI Model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zhi5" data-testid="select-item-zhi5">ZHI 5 - Default</SelectItem>
+                    <SelectItem value="zhi2" data-testid="select-item-zhi2">ZHI 2 - Default</SelectItem>
                     <SelectItem value="zhi1" data-testid="select-item-zhi1">ZHI 1</SelectItem>
-                    <SelectItem value="zhi2" data-testid="select-item-zhi2">ZHI 2</SelectItem>
                     <SelectItem value="zhi3" data-testid="select-item-zhi3">ZHI 3</SelectItem>
                     <SelectItem value="zhi4" data-testid="select-item-zhi4">ZHI 4</SelectItem>
+                    <SelectItem value="zhi5" data-testid="select-item-zhi5">ZHI 5</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
