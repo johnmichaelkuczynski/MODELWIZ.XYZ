@@ -19,6 +19,7 @@ import { parseMADescription, calculateMAMetrics, generateMAExcel } from "./servi
 import { parseThreeStatementDescription, calculateThreeStatementModel, generateThreeStatementExcel } from "./services/threeStatementModelService";
 import { parseRegressionDescription, generateRegressionPythonCode } from "./services/regressionModelService";
 import { parseForecastingDescription, generateForecastingPythonCode } from "./services/forecastingModelService";
+import { parsePredictiveDescription } from "./services/predictiveAnalyticsService";
 
 
 // Configure multer for file uploads
@@ -3739,6 +3740,75 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
 
     } catch (error: any) {
       console.error("Forecasting model download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Python file"
+      });
+    }
+  });
+
+  // Data Science Panel - Parse Predictive Analytics description
+  app.post("/api/datascience/parse-predictive", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Predictive analytics description is required"
+        });
+      }
+
+      // Parse the description to extract predictive analytics parameters
+      const result = await parsePredictiveDescription(description);
+
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          message: result.error || "Failed to parse predictive analytics parameters"
+        });
+      }
+
+      res.json({
+        success: true,
+        parameters: result.parameters,
+        pythonCode: result.pythonCode,
+        providerUsed: result.providerUsed
+      });
+
+    } catch (error: any) {
+      console.error("Predictive analytics parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse predictive analytics description"
+      });
+    }
+  });
+
+  // Data Science Panel - Download Predictive Analytics Python file
+  app.post("/api/datascience/download-predictive", async (req: Request, res: Response) => {
+    try {
+      const { pythonCode, parameters } = req.body;
+
+      if (!pythonCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Python code is required"
+        });
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+      const problemType = parameters?.problemType || 'prediction';
+      const targetVar = (parameters?.targetVariable || 'target').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+      const filename = `predictive_pipeline_${problemType}_${targetVar}_${timestamp}.py`;
+
+      res.setHeader('Content-Type', 'text/x-python');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(pythonCode));
+      res.send(pythonCode);
+
+    } catch (error: any) {
+      console.error("Predictive analytics download error:", error);
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Python file"
