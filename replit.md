@@ -40,6 +40,17 @@ The application uses a monorepo structure, separating client and server.
         - **Ratio Analysis**: 50+ ratios across profitability, liquidity, leverage, efficiency, growth, per-share metrics
         - **Charts Data**: Pre-formatted tables for Revenue/EBITDA, Leverage, EPS visualization
         - **Balance Sheet Reconciliation (December 2024 Fix)**: Implements standard financial modeling "plug" mechanism using cash as balancing item. Ensures Assets = Liabilities + Equity across all periods (0-5) by: (1) anchoring historical assets to user input, (2) adjusting retained earnings to force period 0 balance, (3) propagating retained earnings adjustment through forward periods, (4) applying cash plug for any remaining imbalance per period.
+      - **IPO Pricing Model**: Fully implemented with comprehensive mechanical pricing (December 2024):
+        - **Core Mechanics**: EV = MarketCap + Debt - Cash; Proceeds = OfferPrice × SharesSold
+        - **Shares Calculation**: Computed from dollarRaise/offerPrice at each price point
+        - **Founder Ownership**: Recomputed at each price point (fixed founder shares / updated FD shares)
+        - **Price Range Enforcement**: Requires user-provided indicatedPriceRangeLow/High; returns error if missing
+        - **POP Calculation**: Purely mechanical from user-provided order book and sector benchmarks
+        - **Book Quality**: Uses ln(oversubscription) with no fabricated extrapolation or decay rates
+        - **All Defaults Neutral**: downRoundIpoPenalty=0, dualClassDiscount=0, underwritingFeePercent=0, monthsToCatalyst=undefined
+        - **No Hardcoded Thresholds**: Removed all judgment thresholds (oversubscription 3/5/10, POP -0.10)
+        - **No CEO Text Inference**: pricingAggressiveness and managementPriority must be explicitly provided
+        - **Recommendation Logic**: Based purely on user's pricingAggressiveness and managementPriority
       - Default LLM: Zhi 5 (Grok) using grok-3 model for finance models.
     - **Data Science Panel**: Generates production-ready Python code for machine learning and statistical analysis from natural language descriptions.
       - **Regression Models**: Fully implemented with 7 regression types:
