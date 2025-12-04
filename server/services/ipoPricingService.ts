@@ -492,44 +492,88 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     }
   }
   
-  // Determine price range - REQUIRE USER INPUT STRICTLY
-  // If user doesn't provide range, pricing calculation cannot proceed correctly
+  // Determine price range - use user input, or COMPUTE from fair value / raise amounts
   const hasUserProvidedRange = (indicatedPriceRangeLow !== undefined && indicatedPriceRangeLow > 0) && 
                                 (indicatedPriceRangeHigh !== undefined && indicatedPriceRangeHigh > 0);
   
-  if (!hasUserProvidedRange) {
-    // SHORT-CIRCUIT: Cannot proceed without user-provided price range
-    const errorWarning = "ERROR: Price range (indicatedPriceRangeLow/High) is REQUIRED - cannot price without user-provided range. Please provide both indicatedPriceRangeLow and indicatedPriceRangeHigh.";
-    return {
-      assumptions, // Return original assumptions
-      pricingMatrix: [],
-      recommendedRangeLow: 0,
-      recommendedRangeHigh: 0,
-      recommendedPrice: 0,
-      rationale: [],
-      warnings: [errorWarning],
-      memoText: `IPO PRICING ERROR\n\n${errorWarning}`,
-    };
-  }
+  let minPrice: number;
+  let maxPrice: number;
+  let priceRangeSource: string = "user-provided";
   
-  // Guard for inverted or zero range
-  if (indicatedPriceRangeHigh <= indicatedPriceRangeLow) {
-    const errorWarning = "ERROR: indicatedPriceRangeHigh must be greater than indicatedPriceRangeLow.";
-    return {
-      assumptions,
-      pricingMatrix: [],
-      recommendedRangeLow: 0,
-      recommendedRangeHigh: 0,
-      recommendedPrice: 0,
-      rationale: [],
-      warnings: [errorWarning],
-      memoText: `IPO PRICING ERROR\n\n${errorWarning}`,
-    };
+  if (hasUserProvidedRange) {
+    // Guard for inverted range
+    if (indicatedPriceRangeHigh <= indicatedPriceRangeLow) {
+      const errorWarning = "ERROR: indicatedPriceRangeHigh must be greater than indicatedPriceRangeLow.";
+      return {
+        assumptions,
+        pricingMatrix: [],
+        recommendedRangeLow: 0,
+        recommendedRangeHigh: 0,
+        recommendedPrice: 0,
+        rationale: [],
+        warnings: [errorWarning],
+        memoText: `IPO PRICING ERROR\n\n${errorWarning}`,
+      };
+    }
+    minPrice = indicatedPriceRangeLow;
+    maxPrice = indicatedPriceRangeHigh;
+    priceRangeSource = "user-provided";
+  } else {
+    // COMPUTE price range from other user inputs - no fabrication
+    // Priority: fair value per share > implied from dollar raise / shares
+    
+    let derivedMidpoint: number | null = null;
+    
+    // Method 1: Use fair value per share as midpoint
+    if (fairValuePerShare && fairValuePerShare > 0) {
+      derivedMidpoint = fairValuePerShare;
+      priceRangeSource = "derived from fair value per share";
+    }
+    // Method 2: Compute from dollar raise and shares outstanding
+    else if (primaryDollarRaiseM && primaryDollarRaiseM > 0 && inputPrimaryShares && inputPrimaryShares > 0) {
+      // Implied price = target raise / shares offered
+      derivedMidpoint = primaryDollarRaiseM / inputPrimaryShares;
+      priceRangeSource = "derived from dollar raise / shares offered";
+    }
+    // Method 3: Use peer EV/Rev multiple if revenue company
+    else if (peerMedianEVRevenue > 0 && ntmRevenue > 0 && sharesOutstandingPreIPO > 0) {
+      // Implied EV = Rev * Multiple, then price = EV / shares (rough approximation)
+      const impliedEV = ntmRevenue * peerMedianEVRevenue;
+      derivedMidpoint = impliedEV / sharesOutstandingPreIPO;
+      priceRangeSource = "derived from peer EV/Revenue multiple";
+    }
+    // Method 4: For biotech with raNPV
+    else if (totalRaNPV > 0 && peerMedianEVRaNPV > 0 && sharesOutstandingPreIPO > 0) {
+      const impliedEV = totalRaNPV * peerMedianEVRaNPV;
+      derivedMidpoint = impliedEV / sharesOutstandingPreIPO;
+      priceRangeSource = "derived from EV/raNPV multiple";
+    }
+    
+    if (derivedMidpoint === null || derivedMidpoint <= 0) {
+      // Cannot compute - need more user input
+      const errorWarning = "ERROR: Cannot determine price range. Please provide either (1) indicatedPriceRangeLow/High, (2) fairValuePerShare, (3) primaryDollarRaiseM with primarySharesOffered, or (4) peer multiples with revenue/raNPV.";
+      return {
+        assumptions,
+        pricingMatrix: [],
+        recommendedRangeLow: 0,
+        recommendedRangeHigh: 0,
+        recommendedPrice: 0,
+        rationale: [],
+        warnings: [errorWarning],
+        memoText: `IPO PRICING ERROR\n\n${errorWarning}`,
+      };
+    }
+    
+    // Build range around derived midpoint: ±15% (typical IPO filing range)
+    minPrice = Math.round(derivedMidpoint * 0.85);
+    maxPrice = Math.round(derivedMidpoint * 1.15);
+    
+    // Ensure minimum $1 range
+    if (minPrice < 1) minPrice = 1;
+    if (maxPrice <= minPrice) maxPrice = minPrice + 4;
+    
+    warnings.push(`Price range ${priceRangeSource}: $${minPrice} - $${maxPrice}`);
   }
-  
-  // Use user-provided values strictly - no fabrication
-  let minPrice = indicatedPriceRangeLow;
-  let maxPrice = indicatedPriceRangeHigh;
   
   const pricePoints: number[] = [];
   for (let p = minPrice; p <= maxPrice; p += 1) {

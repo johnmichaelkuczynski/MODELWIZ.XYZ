@@ -44,7 +44,7 @@ The application uses a monorepo structure, separating client and server.
         - **Core Mechanics**: EV = MarketCap + Debt - Cash; Proceeds = OfferPrice × SharesSold
         - **Shares Calculation**: Computed from dollarRaise/offerPrice at each price point
         - **Founder Ownership**: Recomputed at each price point (fixed founder shares / updated FD shares)
-        - **Price Range Enforcement**: Requires user-provided indicatedPriceRangeLow/High; returns error if missing
+        - **Price Range Derivation**: Uses user-provided range, OR computes from (1) fair value per share ±15%, (2) dollar raise / shares, (3) peer EV/Rev multiple, (4) EV/raNPV multiple
         - **POP Calculation**: Purely mechanical from user-provided order book and sector benchmarks
         - **Book Quality**: Uses ln(oversubscription) with no fabricated extrapolation or decay rates
         - **All Defaults Neutral**: downRoundIpoPenalty=0, dualClassDiscount=0, underwritingFeePercent=0, monthsToCatalyst=undefined
