@@ -247,7 +247,11 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     ebitda.push(revenue[i] * margin);
   }
 
-  // Debt schedule - FIXED: Proper LBO debt mechanics
+  // ============ DEBT SCHEDULE - SIMPLE EXCESS CASH FLOW SWEEP ============
+  // Logic: 100% of FCF goes to Senior Debt first, then Sub Debt
+  // Senior_Amort[t] = min(FCF[t], Senior_Balance[t-1])
+  // Sub_Amort[t] = min(FCF[t] - Senior_Amort[t], Sub_Balance[t-1])
+  
   const seniorDebt: number[] = [seniorDebtAmount];
   const subDebt: number[] = [subDebtAmount];
   const seniorInterest: number[] = [0]; // Year 0 has no interest
@@ -264,14 +268,14 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   const taxes: number[] = [0]; // Taxes by year
   const netIncome: number[] = [0]; // Net income by year
   
-  console.log(`[LBO Model] Initial debt structure: Senior=${seniorDebtAmount}M, Sub=${subDebtAmount}M`);
+  console.log(`[LBO Model] Initial debt structure: Senior=${seniorDebtAmount.toFixed(2)}M, Sub=${subDebtAmount.toFixed(2)}M`);
   
   for (let i = 1; i <= 5; i++) {
-    // Calculate operating metrics
+    // ========== STEP 1: Calculate operating metrics ==========
     da.push(revenue[i] * daPercent);
     ebit.push(ebitda[i] - da[i]);
     
-    // Interest calculated on BEGINNING balance (average would be more accurate but this is standard)
+    // Interest on BEGINNING balance
     const seniorInt = seniorDebt[i - 1] * seniorDebtRate;
     const subInt = subDebt[i - 1] * subDebtRate;
     seniorInterest.push(seniorInt);
@@ -284,64 +288,43 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     taxes.push(taxAmount);
     netIncome.push(ebt - taxAmount);
     
-    // CapEx and NWC
+    // ========== STEP 2: Calculate Free Cash Flow ==========
     capex.push(revenue[i] * capexPercent);
     nwc.push(revenue[i] * nwcPercent);
     const nwcDelta = nwc[i] - nwc[i - 1];
     nwcChange.push(nwcDelta);
     
-    // Unlevered Free Cash Flow (before debt service)
-    // UFCF = EBITDA - Taxes - CapEx - ΔNWC
-    // OR: Net Income + D&A - CapEx - ΔNWC
-    const ufcf = netIncome[i] + da[i] - capex[i] - nwcDelta;
+    // FCF = Net Income + D&A - CapEx - ΔNWC
+    // (Interest is already deducted in Net Income)
+    const ecf = netIncome[i] + da[i] - capex[i] - nwcDelta;
+    freeCashFlow.push(ecf);
     
-    // Levered Free Cash Flow / Cash Available for Debt Service
-    // This is AFTER interest but BEFORE principal payments
-    // Since interest is already in net income calculation, UFCF = cash available for principal
-    const cashAvailableForDebt = ufcf;
-    freeCashFlow.push(cashAvailableForDebt);
+    // ========== STEP 3: Debt sweep - SIMPLE LOGIC ==========
+    // All positive FCF goes to Senior first, then Sub
+    // NO complicated scheduled amortization - just pure cash sweep
     
-    // Mandatory scheduled amortization (typically 5-10% of original senior debt per year)
-    // If seniorDebtAmortization > 0.5, it's likely a cash sweep %, not scheduled amort
-    // Standard LBO: ~5% annual scheduled amortization of term loan
-    const scheduledAmortRate = seniorDebtAmortization > 0.20 ? 0.05 : seniorDebtAmortization;
-    const scheduledAmort = Math.min(seniorDebtAmount * scheduledAmortRate, seniorDebt[i - 1]);
+    const seniorBeginning = seniorDebt[i - 1];
+    const subBeginning = subDebt[i - 1] + (subDebt[i - 1] * subDebtPIK); // Add PIK if any
     
-    // Excess Cash Flow (ECF) sweep - typically 50-100% of remaining cash after scheduled amort
-    // If user specified high amortization rate (>20%), interpret as cash sweep percentage
-    const cashSweepRate = seniorDebtAmortization > 0.20 ? seniorDebtAmortization : 0.75; // Default 75% sweep
+    // Senior amortization = min(ECF, Senior Beginning Balance)
+    const seniorPaydown = Math.min(Math.max(0, ecf), seniorBeginning);
+    const seniorEnding = seniorBeginning - seniorPaydown;
     
-    let remainingCash = Math.max(0, cashAvailableForDebt);
+    // Cash remaining after Senior paydown
+    const cashAfterSenior = Math.max(0, ecf) - seniorPaydown;
     
-    // Step 1: Pay scheduled amortization from available cash
-    const actualScheduledAmort = Math.min(scheduledAmort, remainingCash, seniorDebt[i - 1]);
-    remainingCash -= actualScheduledAmort;
-    let newSeniorDebt = seniorDebt[i - 1] - actualScheduledAmort;
+    // Sub amortization = min(Remaining Cash, Sub Beginning Balance)
+    const subPaydown = Math.min(cashAfterSenior, subBeginning);
+    const subEnding = subBeginning - subPaydown;
     
-    // Step 2: Apply excess cash flow sweep to Senior Debt first
-    const excessCashForSweep = remainingCash * cashSweepRate;
-    const seniorSweep = Math.min(excessCashForSweep, newSeniorDebt);
-    newSeniorDebt -= seniorSweep;
-    remainingCash -= seniorSweep;
+    // Push results
+    seniorAmort.push(seniorPaydown);
+    seniorDebt.push(Math.max(0, seniorEnding));
+    subAmort.push(subPaydown);
+    subDebt.push(Math.max(0, subEnding));
+    cashSweep.push(seniorPaydown + subPaydown);
     
-    seniorAmort.push(actualScheduledAmort + seniorSweep);
-    cashSweep.push(seniorSweep);
-    seniorDebt.push(Math.max(0, newSeniorDebt));
-    
-    // Step 3: Sub debt - add PIK interest if applicable
-    let newSubDebt = subDebt[i - 1] + (subDebt[i - 1] * subDebtPIK);
-    
-    // Step 4: If Senior is fully paid, sweep excess to Sub Debt
-    let subSweepAmount = 0;
-    if (newSeniorDebt <= 0 && remainingCash > 0 && newSubDebt > 0) {
-      const subSweep = Math.min(remainingCash * cashSweepRate, newSubDebt);
-      newSubDebt -= subSweep;
-      subSweepAmount = subSweep;
-    }
-    subAmort.push(subSweepAmount);
-    subDebt.push(Math.max(0, newSubDebt));
-    
-    console.log(`[LBO Model] Year ${i}: FCF=${cashAvailableForDebt.toFixed(2)}M, Senior Interest=${seniorInt.toFixed(2)}M, Sub Interest=${subInt.toFixed(2)}M, Amort=${(actualScheduledAmort + seniorSweep).toFixed(2)}M, Senior Debt End=${newSeniorDebt.toFixed(2)}M, Sub Debt End=${newSubDebt.toFixed(2)}M`);
+    console.log(`[LBO Model] Year ${i}: ECF=${ecf.toFixed(2)}M | Senior: Beg=${seniorBeginning.toFixed(2)}M, Paydown=${seniorPaydown.toFixed(2)}M, End=${seniorEnding.toFixed(2)}M | Sub: Beg=${subBeginning.toFixed(2)}M, Paydown=${subPaydown.toFixed(2)}M, End=${subEnding.toFixed(2)}M`);
   }
 
   // Exit valuation
