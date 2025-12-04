@@ -13,8 +13,10 @@ interface DCFAssumptions {
   targetEBITDAMargin: number;
   marginExpansionYears: number;
   daPercent: number;
+  daPercentTerminal: number;
   taxRate: number;
   capexPercent: number;
+  capexPercentTerminal: number;
   nwcPercent: number;
   wacc: number;
   projectionYears: number;
@@ -37,30 +39,40 @@ Return a JSON object with EXACTLY these fields (all numbers, no strings except c
   "companyName": "string - company name or 'Target Company' if not specified",
   "baseYearRevenue": number in millions (e.g., 850 for $850 million),
   "revenueGrowthRates": array of 5 numbers representing Y1-Y5 growth rates as decimals (e.g., [0.35, 0.35, 0.28, 0.20, 0.20]),
-  "terminalGrowthRate": number as decimal (e.g., 0.04 for 4%),
+  "terminalGrowthRate": number as decimal (e.g., 0.03 for 3%),
   "baseEBITDAMargin": number as decimal (e.g., 0.18 for 18%),
   "targetEBITDAMargin": number as decimal (e.g., 0.32 for 32%),
   "marginExpansionYears": number of years to reach target margin (usually 5),
-  "daPercent": D&A as decimal of revenue (e.g., 0.06 for 6%),
+  "daPercent": D&A as decimal of revenue for Year 1 (e.g., 0.06 for 6%),
+  "daPercentTerminal": D&A as decimal of revenue at terminal year - should decline as company matures (e.g., 0.04 for 4%),
   "taxRate": number as decimal (e.g., 0.21 for 21%),
-  "capexPercent": CapEx as decimal of revenue (e.g., 0.08 for 8%),
+  "capexPercent": CapEx as decimal of revenue for Year 1 (e.g., 0.08 for 8%),
+  "capexPercentTerminal": CapEx as decimal of revenue at terminal year - CRITICAL: must decline toward or below D&A in terminal (e.g., 0.04 for 4%),
   "nwcPercent": NWC as decimal of revenue (e.g., 0.12 for 12%),
-  "wacc": number as decimal (e.g., 0.115 for 11.5%),
+  "wacc": number as decimal (e.g., 0.10 for 10%),
   "projectionYears": number (usually 5),
   "totalDebt": number in millions,
   "cashAndEquivalents": number in millions,
   "sharesOutstanding": number in millions
 }
 
+CRITICAL FINANCIAL MODELING RULES:
+1. CapEx should DECLINE over time as the company matures - high-growth companies need more investment initially
+2. In terminal year, CapEx should approach or be LESS THAN D&A (maintenance mode)
+3. If CapEx > D&A forever, you're modeling a capital-destroying business (unrealistic for healthy companies)
+4. Typical mature company: CapEx = 3-5% of revenue, D&A = 4-6% of revenue (CapEx <= D&A)
+
 Default values if not specified:
-- revenueGrowthRates: [0.10, 0.10, 0.08, 0.06, 0.05] (declining growth)
+- revenueGrowthRates: [0.10, 0.08, 0.06, 0.05, 0.04] (declining growth)
 - terminalGrowthRate: 0.025 (2.5%)
-- baseEBITDAMargin: 0.15 (15%)
-- targetEBITDAMargin: 0.20 (20%)
+- baseEBITDAMargin: 0.18 (18%)
+- targetEBITDAMargin: 0.25 (25%)
 - marginExpansionYears: 5
-- daPercent: 0.05 (5%)
+- daPercent: 0.05 (5% Year 1)
+- daPercentTerminal: 0.04 (4% terminal - declines as assets mature)
 - taxRate: 0.25 (25%)
-- capexPercent: 0.05 (5%)
+- capexPercent: 0.08 (8% Year 1 - growth phase)
+- capexPercentTerminal: 0.04 (4% terminal - MUST be <= D&A for maintenance mode)
 - nwcPercent: 0.10 (10%)
 - wacc: 0.10 (10%)
 - projectionYears: 5
@@ -241,8 +253,10 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     targetEBITDAMargin,
     marginExpansionYears,
     daPercent,
+    daPercentTerminal = daPercent * 0.8,
     taxRate,
     capexPercent,
+    capexPercentTerminal = Math.min(capexPercent * 0.5, daPercentTerminal || daPercent * 0.8),
     nwcPercent,
     wacc,
     projectionYears,
@@ -257,6 +271,8 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
   const ebitda: number[] = [];
   const ebitdaMargin: number[] = [];
   const fcf: number[] = [];
+  const daByYear: number[] = [];
+  const capexByYear: number[] = [];
 
   let currentRevenue = baseYearRevenue;
   
@@ -277,18 +293,31 @@ export function calculateDCFValuation(assumptions: DCFAssumptions, providerUsed:
     const ebitdaValue = currentRevenue * margin;
     ebitda.push(ebitdaValue);
     
-    // FCF = EBITDA - D&A + D&A*(1-tax) - CapEx - Change in NWC
-    // Simplified: FCF = EBITDA * (1 - tax) + D&A * tax - CapEx - delta NWC
-    const da = currentRevenue * daPercent;
+    // RAMPING D&A: Linear decline from daPercent to daPercentTerminal
+    const daStep = (daPercentTerminal - daPercent) / (projectionYears - 1);
+    const currentDaPercent = daPercent + daStep * i;
+    const da = currentRevenue * currentDaPercent;
+    daByYear.push(da);
+    
+    // RAMPING CapEx: Linear decline from capexPercent to capexPercentTerminal
+    // CRITICAL: CapEx should approach or be <= D&A by terminal year
+    const capexStep = (capexPercentTerminal - capexPercent) / (projectionYears - 1);
+    const currentCapexPercent = capexPercent + capexStep * i;
+    const capex = currentRevenue * currentCapexPercent;
+    capexByYear.push(capex);
+    
     const ebit = ebitdaValue - da;
     const nopat = ebit * (1 - taxRate);
-    const capex = currentRevenue * capexPercent;
     const nwcChange = i === 0 
       ? currentRevenue * nwcPercent - baseYearRevenue * nwcPercent 
       : currentRevenue * nwcPercent - revenue[i - 1] * nwcPercent;
     const fcfValue = nopat + da - capex - nwcChange;
     fcf.push(fcfValue);
+    
+    console.log(`[DCF] Year ${i + 1}: Rev=${currentRevenue.toFixed(1)}M, EBITDA=${ebitdaValue.toFixed(1)}M (${(margin*100).toFixed(1)}%), D&A=${da.toFixed(1)}M (${(currentDaPercent*100).toFixed(1)}%), CapEx=${capex.toFixed(1)}M (${(currentCapexPercent*100).toFixed(1)}%), FCF=${fcfValue.toFixed(1)}M`);
   }
+  
+  console.log(`[DCF] Terminal year FCF margin: ${((fcf[fcf.length-1] / revenue[revenue.length-1]) * 100).toFixed(1)}%`);
 
   // Calculate DCF valuation for base case
   const calculateValuation = (waccRate: number, termGrowth: number) => {
@@ -348,8 +377,10 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     targetEBITDAMargin,
     marginExpansionYears,
     daPercent,
+    daPercentTerminal = daPercent * 0.8,
     taxRate,
     capexPercent,
+    capexPercentTerminal = Math.min(capexPercent * 0.5, daPercentTerminal || daPercent * 0.8),
     nwcPercent,
     wacc,
     projectionYears,
@@ -363,6 +394,10 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
   const ebitdaMargins: number[] = [];
   const ebitda: number[] = [];
   const fcf: number[] = [];
+  const daValues: number[] = [];
+  const capexValues: number[] = [];
+  const daPercentByYear: number[] = [];
+  const capexPercentByYear: number[] = [];
   
   for (let i = 0; i < 5; i++) {
     const growthRate = revenueGrowthRates[i] || 0.10;
@@ -376,10 +411,22 @@ export async function generateDCFExcel(assumptions: DCFAssumptions): Promise<Buf
     const ebitdaVal = newRevenue * margin;
     ebitda.push(ebitdaVal);
     
-    const da = newRevenue * daPercent;
+    // RAMPING D&A: Linear decline from daPercent to daPercentTerminal
+    const daStep = (daPercentTerminal - daPercent) / 4; // 4 steps for 5 years
+    const currentDaPercent = daPercent + daStep * i;
+    const da = newRevenue * currentDaPercent;
+    daValues.push(da);
+    daPercentByYear.push(currentDaPercent);
+    
+    // RAMPING CapEx: Linear decline from capexPercent to capexPercentTerminal
+    const capexStep = (capexPercentTerminal - capexPercent) / 4;
+    const currentCapexPercent = capexPercent + capexStep * i;
+    const capex = newRevenue * currentCapexPercent;
+    capexValues.push(capex);
+    capexPercentByYear.push(currentCapexPercent);
+    
     const ebit = ebitdaVal - da;
     const nopat = ebit * (1 - taxRate);
-    const capex = newRevenue * capexPercent;
     const prevRev = i === 0 ? baseYearRevenue : revenue[i];
     const nwcChange = newRevenue * nwcPercent - prevRev * nwcPercent;
     const fcfVal = nopat + da - capex - nwcChange;
