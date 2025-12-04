@@ -247,18 +247,31 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     ebitda.push(revenue[i] * margin);
   }
 
-  // Debt schedule
+  // Debt schedule - FIXED: Proper LBO debt mechanics
   const seniorDebt: number[] = [seniorDebtAmount];
   const subDebt: number[] = [subDebtAmount];
-  const seniorInterest: number[] = [];
-  const subInterest: number[] = [];
-  const seniorAmort: number[] = [];
-  const freeCashFlow: number[] = [];
+  const seniorInterest: number[] = [0]; // Year 0 has no interest
+  const subInterest: number[] = [0]; // Year 0 has no interest
+  const seniorAmort: number[] = [0]; // Year 0 has no amortization
+  const subAmort: number[] = [0]; // Track sub debt amortization
+  const freeCashFlow: number[] = [0]; // Year 0 FCF
+  const cashSweep: number[] = [0]; // Track cash sweep amounts
+  const da: number[] = [baseYearRevenue * daPercent]; // D&A by year
+  const capex: number[] = [baseYearRevenue * capexPercent]; // CapEx by year
+  const nwc: number[] = [baseYearRevenue * nwcPercent]; // NWC balance by year
+  const nwcChange: number[] = [0]; // NWC change by year
+  const ebit: number[] = [ebitda[0] - da[0]]; // EBIT by year
+  const taxes: number[] = [0]; // Taxes by year
+  const netIncome: number[] = [0]; // Net income by year
+  
+  console.log(`[LBO Model] Initial debt structure: Senior=${seniorDebtAmount}M, Sub=${subDebtAmount}M`);
   
   for (let i = 1; i <= 5; i++) {
-    const da = revenue[i] * daPercent;
-    const ebit = ebitda[i] - da;
+    // Calculate operating metrics
+    da.push(revenue[i] * daPercent);
+    ebit.push(ebitda[i] - da[i]);
     
+    // Interest calculated on BEGINNING balance (average would be more accurate but this is standard)
     const seniorInt = seniorDebt[i - 1] * seniorDebtRate;
     const subInt = subDebt[i - 1] * subDebtRate;
     seniorInterest.push(seniorInt);
@@ -266,43 +279,69 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     
     const totalInterest = seniorInt + subInt;
     const mgmtFee = ebitda[i] * managementFeePercent;
-    const ebt = ebit - totalInterest - mgmtFee;
-    const taxes = Math.max(0, ebt * taxRate);
-    const netIncome = ebt - taxes;
+    const ebt = ebit[i] - totalInterest - mgmtFee;
+    const taxAmount = Math.max(0, ebt * taxRate);
+    taxes.push(taxAmount);
+    netIncome.push(ebt - taxAmount);
     
-    const capex = revenue[i] * capexPercent;
-    const nwcChange = (revenue[i] - revenue[i - 1]) * nwcPercent;
+    // CapEx and NWC
+    capex.push(revenue[i] * capexPercent);
+    nwc.push(revenue[i] * nwcPercent);
+    const nwcDelta = nwc[i] - nwc[i - 1];
+    nwcChange.push(nwcDelta);
     
-    const cfads = netIncome + da - capex - nwcChange;
-    freeCashFlow.push(cfads);
+    // Unlevered Free Cash Flow (before debt service)
+    // UFCF = EBITDA - Taxes - CapEx - ΔNWC
+    // OR: Net Income + D&A - CapEx - ΔNWC
+    const ufcf = netIncome[i] + da[i] - capex[i] - nwcDelta;
     
-    // Mandatory senior debt amortization
-    const mandatoryAmort = Math.min(seniorDebtAmount * seniorDebtAmortization, seniorDebt[i - 1]);
-    seniorAmort.push(mandatoryAmort);
+    // Levered Free Cash Flow / Cash Available for Debt Service
+    // This is AFTER interest but BEFORE principal payments
+    // Since interest is already in net income calculation, UFCF = cash available for principal
+    const cashAvailableForDebt = ufcf;
+    freeCashFlow.push(cashAvailableForDebt);
     
-    // Apply cash to debt repayment
-    let remainingCash = cfads - mandatoryAmort;
-    let newSeniorDebt = seniorDebt[i - 1] - mandatoryAmort;
+    // Mandatory scheduled amortization (typically 5-10% of original senior debt per year)
+    // If seniorDebtAmortization > 0.5, it's likely a cash sweep %, not scheduled amort
+    // Standard LBO: ~5% annual scheduled amortization of term loan
+    const scheduledAmortRate = seniorDebtAmortization > 0.20 ? 0.05 : seniorDebtAmortization;
+    const scheduledAmort = Math.min(seniorDebtAmount * scheduledAmortRate, seniorDebt[i - 1]);
     
-    // Optional prepayment to senior debt first
-    if (remainingCash > 0 && newSeniorDebt > 0) {
-      const prepay = Math.min(remainingCash, newSeniorDebt);
-      newSeniorDebt -= prepay;
-      remainingCash -= prepay;
-    }
+    // Excess Cash Flow (ECF) sweep - typically 50-100% of remaining cash after scheduled amort
+    // If user specified high amortization rate (>20%), interpret as cash sweep percentage
+    const cashSweepRate = seniorDebtAmortization > 0.20 ? seniorDebtAmortization : 0.75; // Default 75% sweep
     
+    let remainingCash = Math.max(0, cashAvailableForDebt);
+    
+    // Step 1: Pay scheduled amortization from available cash
+    const actualScheduledAmort = Math.min(scheduledAmort, remainingCash, seniorDebt[i - 1]);
+    remainingCash -= actualScheduledAmort;
+    let newSeniorDebt = seniorDebt[i - 1] - actualScheduledAmort;
+    
+    // Step 2: Apply excess cash flow sweep to Senior Debt first
+    const excessCashForSweep = remainingCash * cashSweepRate;
+    const seniorSweep = Math.min(excessCashForSweep, newSeniorDebt);
+    newSeniorDebt -= seniorSweep;
+    remainingCash -= seniorSweep;
+    
+    seniorAmort.push(actualScheduledAmort + seniorSweep);
+    cashSweep.push(seniorSweep);
     seniorDebt.push(Math.max(0, newSeniorDebt));
     
-    // Sub debt (with PIK if applicable)
+    // Step 3: Sub debt - add PIK interest if applicable
     let newSubDebt = subDebt[i - 1] + (subDebt[i - 1] * subDebtPIK);
     
-    // Optional prepayment to sub debt if senior is paid off
-    if (remainingCash > 0 && newSubDebt > 0) {
-      const prepay = Math.min(remainingCash, newSubDebt);
-      newSubDebt -= prepay;
+    // Step 4: If Senior is fully paid, sweep excess to Sub Debt
+    let subSweepAmount = 0;
+    if (newSeniorDebt <= 0 && remainingCash > 0 && newSubDebt > 0) {
+      const subSweep = Math.min(remainingCash * cashSweepRate, newSubDebt);
+      newSubDebt -= subSweep;
+      subSweepAmount = subSweep;
     }
-    
+    subAmort.push(subSweepAmount);
     subDebt.push(Math.max(0, newSubDebt));
+    
+    console.log(`[LBO Model] Year ${i}: FCF=${cashAvailableForDebt.toFixed(2)}M, Senior Interest=${seniorInt.toFixed(2)}M, Sub Interest=${subInt.toFixed(2)}M, Amort=${(actualScheduledAmort + seniorSweep).toFixed(2)}M, Senior Debt End=${newSeniorDebt.toFixed(2)}M, Sub Debt End=${newSubDebt.toFixed(2)}M`);
   }
 
   // Exit valuation
@@ -343,12 +382,21 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
       revenue,
       ebitda,
       ebitdaMargins,
+      da,
+      ebit,
+      taxes,
+      netIncome,
+      capex,
+      nwc,
+      nwcChange,
       freeCashFlow,
       seniorDebt,
       subDebt,
       seniorInterest,
       subInterest,
       seniorAmort,
+      subAmort,
+      cashSweep,
     },
     sourcesAndUses: {
       sources: {
@@ -564,8 +612,22 @@ export async function generateLBOExcel(assumptions: LBOAssumptions): Promise<Buf
   projSheet.addRow(["EBITDA Margin", ...projections.ebitdaMargins]);
   for (let i = 2; i <= 7; i++) projSheet.getCell(4, i).numFmt = percentFormat;
 
-  projSheet.addRow(["Free Cash Flow ($M)", "", ...projections.freeCashFlow]);
-  for (let i = 3; i <= 7; i++) projSheet.getCell(5, i).numFmt = currencyFormat;
+  projSheet.addRow(["Free Cash Flow ($M)", ...projections.freeCashFlow]);
+  for (let i = 2; i <= 7; i++) projSheet.getCell(5, i).numFmt = currencyFormat;
+
+  // Add more detail to projections
+  projSheet.addRow([""]);
+  projSheet.addRow(["D&A ($M)", ...projections.da]);
+  for (let i = 2; i <= 7; i++) projSheet.getCell(7, i).numFmt = currencyFormat;
+
+  projSheet.addRow(["EBIT ($M)", ...projections.ebit]);
+  for (let i = 2; i <= 7; i++) projSheet.getCell(8, i).numFmt = currencyFormat;
+
+  projSheet.addRow(["CapEx ($M)", ...projections.capex]);
+  for (let i = 2; i <= 7; i++) projSheet.getCell(9, i).numFmt = currencyFormat;
+
+  projSheet.addRow(["NWC Change ($M)", ...projections.nwcChange]);
+  for (let i = 2; i <= 7; i++) projSheet.getCell(10, i).numFmt = currencyFormat;
 
   // ============ DEBT SCHEDULE ============
   const debtSheet = workbook.addWorksheet("Debt_Schedule");
@@ -574,39 +636,85 @@ export async function generateLBOExcel(assumptions: LBOAssumptions): Promise<Buf
     { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 },
   ];
 
+  let debtRow = 1;
+  
+  // SENIOR DEBT SECTION
   debtSheet.addRow(["SENIOR DEBT", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
-  debtSheet.getRow(1).font = { bold: true };
-  debtSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+  debtSheet.getRow(debtRow).font = { bold: true };
+  debtSheet.getRow(debtRow).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+  debtRow++;
 
-  debtSheet.addRow(["Balance ($M)", ...projections.seniorDebt]);
-  for (let i = 2; i <= 7; i++) debtSheet.getCell(2, i).numFmt = currencyFormat;
+  debtSheet.addRow(["Beginning Balance ($M)", "-", ...projections.seniorDebt.slice(0, 5)]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
 
-  debtSheet.addRow(["Interest Expense ($M)", "", ...projections.seniorInterest]);
-  for (let i = 3; i <= 7; i++) debtSheet.getCell(3, i).numFmt = currencyFormat;
+  debtSheet.addRow(["Interest Expense ($M)", ...projections.seniorInterest]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
 
-  debtSheet.addRow(["Mandatory Amort ($M)", "", ...projections.seniorAmort]);
-  for (let i = 3; i <= 7; i++) debtSheet.getCell(4, i).numFmt = currencyFormat;
+  debtSheet.addRow(["Principal Paydown ($M)", ...projections.seniorAmort]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+
+  debtSheet.addRow(["Ending Balance ($M)", ...projections.seniorDebt]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
 
   debtSheet.addRow([""]);
+  debtRow++;
 
+  // SUBORDINATED DEBT SECTION
   debtSheet.addRow(["SUBORDINATED DEBT", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
-  debtSheet.getRow(6).font = { bold: true };
-  debtSheet.getRow(6).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+  debtSheet.getRow(debtRow).font = { bold: true };
+  debtSheet.getRow(debtRow).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+  debtRow++;
 
-  debtSheet.addRow(["Balance ($M)", ...projections.subDebt]);
-  for (let i = 2; i <= 7; i++) debtSheet.getCell(7, i).numFmt = currencyFormat;
+  debtSheet.addRow(["Beginning Balance ($M)", "-", ...projections.subDebt.slice(0, 5)]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
 
-  debtSheet.addRow(["Interest Expense ($M)", "", ...projections.subInterest]);
-  for (let i = 3; i <= 7; i++) debtSheet.getCell(8, i).numFmt = currencyFormat;
+  debtSheet.addRow(["Interest Expense ($M)", ...projections.subInterest]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+
+  debtSheet.addRow(["Principal Paydown ($M)", ...projections.subAmort]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+
+  debtSheet.addRow(["Ending Balance ($M)", ...projections.subDebt]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
 
   debtSheet.addRow([""]);
+  debtRow++;
 
+  // TOTAL DEBT SECTION
   debtSheet.addRow(["TOTAL DEBT", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
-  debtSheet.getRow(10).font = { bold: true };
+  debtSheet.getRow(debtRow).font = { bold: true };
+  debtSheet.getRow(debtRow).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+  debtRow++;
 
   const totalDebt = projections.seniorDebt.map((s, i) => s + projections.subDebt[i]);
   debtSheet.addRow(["Total Debt ($M)", ...totalDebt]);
-  for (let i = 2; i <= 7; i++) debtSheet.getCell(11, i).numFmt = currencyFormat;
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+
+  const totalInterest = projections.seniorInterest.map((s, i) => s + projections.subInterest[i]);
+  debtSheet.addRow(["Total Interest ($M)", ...totalInterest]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
+  debtRow++;
+
+  // FREE CASH FLOW SUMMARY
+  debtSheet.addRow([""]);
+  debtRow++;
+  
+  debtSheet.addRow(["CASH FLOW SUMMARY", "Year 0", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]);
+  debtSheet.getRow(debtRow).font = { bold: true };
+  debtSheet.getRow(debtRow).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFCC00" } };
+  debtRow++;
+  
+  debtSheet.addRow(["Cash Available for Debt ($M)", ...projections.freeCashFlow]);
+  for (let i = 2; i <= 7; i++) debtSheet.getCell(debtRow, i).numFmt = currencyFormat;
 
   // ============ RETURNS ANALYSIS ============
   const returnsSheet = workbook.addWorksheet("Returns_Analysis");
