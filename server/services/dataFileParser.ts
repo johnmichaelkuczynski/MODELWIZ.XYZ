@@ -33,6 +33,11 @@ export interface JupyterNotebookResult {
   codeCells: string[];
   markdownCells: string[];
   outputs: string[];
+  rowCount: number;
+  columnCount: number;
+  columns: string[];
+  schema: { name: string; type: string }[];
+  preview: Record<string, any>[];
   error?: string;
 }
 
@@ -267,6 +272,9 @@ export async function parseJSON(buffer: Buffer, filename: string): Promise<DataF
   }
 }
 
+const MAX_ROWS_READ = 1000;
+const PREVIEW_ROWS = 10;
+
 export async function parseParquet(buffer: Buffer, filename: string): Promise<DataFileResult> {
   if (!parquet) {
     return {
@@ -278,13 +286,13 @@ export async function parseParquet(buffer: Buffer, filename: string): Promise<Da
       columns: [],
       preview: [],
       schema: [],
-      error: 'Parquet support not available',
+      error: 'Parquet format is not supported in this environment. Please convert to CSV or JSON.',
     };
   }
   
+  const tempPath = path.join('/tmp', `parquet_${Date.now()}.parquet`);
+  
   try {
-    // Write buffer to temp file (parquetjs requires file path)
-    const tempPath = path.join('/tmp', `parquet_${Date.now()}.parquet`);
     fs.writeFileSync(tempPath, buffer);
     
     const reader = await parquet.ParquetReader.openFile(tempPath);
@@ -295,11 +303,10 @@ export async function parseParquet(buffer: Buffer, filename: string): Promise<Da
     
     while (record = await cursor.next()) {
       data.push(record);
-      if (data.length >= 10000) break; // Limit for large files
+      if (data.length >= MAX_ROWS_READ) break;
     }
     
     await reader.close();
-    fs.unlinkSync(tempPath); // Clean up temp file
     
     const columns = data.length > 0 ? Object.keys(data[0]) : [];
     
@@ -315,9 +322,9 @@ export async function parseParquet(buffer: Buffer, filename: string): Promise<Da
       rowCount: data.length,
       columnCount: columns.length,
       columns,
-      preview: data.slice(0, 10),
+      preview: data.slice(0, PREVIEW_ROWS),
       schema,
-      rawData: data.length <= 1000 ? data : undefined,
+      rawData: data.length <= MAX_ROWS_READ ? data : undefined,
     };
   } catch (error: any) {
     return {
@@ -331,44 +338,45 @@ export async function parseParquet(buffer: Buffer, filename: string): Promise<Da
       schema: [],
       error: error.message,
     };
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (e) {
+      console.warn('Failed to clean up temp parquet file:', e);
+    }
   }
 }
 
 export async function parseSQLite(buffer: Buffer, filename: string): Promise<DataFileResult & { tables?: string[] }> {
+  const tempPath = path.join('/tmp', `sqlite_${Date.now()}.db`);
+  let db: any = null;
+  
   try {
-    // Write buffer to temp file
-    const tempPath = path.join('/tmp', `sqlite_${Date.now()}.db`);
     fs.writeFileSync(tempPath, buffer);
     
-    const db = new Database(tempPath, { readonly: true });
+    db = new Database(tempPath, { readonly: true });
     
-    // Get all tables
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[];
     const tableNames = tables.map(t => t.name);
     
     if (tableNames.length === 0) {
-      db.close();
-      fs.unlinkSync(tempPath);
       throw new Error('No tables found in SQLite database');
     }
     
-    // Get data from first table
     const mainTable = tableNames[0];
-    const data = db.prepare(`SELECT * FROM "${mainTable}" LIMIT 10000`).all() as Record<string, any>[];
+    const data = db.prepare(`SELECT * FROM "${mainTable}" LIMIT ${MAX_ROWS_READ}`).all() as Record<string, any>[];
     const countResult = db.prepare(`SELECT COUNT(*) as count FROM "${mainTable}"`).get() as { count: number };
     const totalRows = countResult.count;
     
     const columns = data.length > 0 ? Object.keys(data[0]) : [];
     
-    // Get column info from pragma
     const pragmaInfo = db.prepare(`PRAGMA table_info("${mainTable}")`).all() as { name: string; type: string }[];
     const schema = pragmaInfo.map(col => ({
       name: col.name,
       type: col.type.toLowerCase() || 'text',
     }));
-    
-    db.close();
-    fs.unlinkSync(tempPath);
     
     return {
       success: true,
@@ -377,9 +385,9 @@ export async function parseSQLite(buffer: Buffer, filename: string): Promise<Dat
       rowCount: totalRows,
       columnCount: columns.length,
       columns,
-      preview: data.slice(0, 10),
+      preview: data.slice(0, PREVIEW_ROWS),
       schema,
-      rawData: data.length <= 1000 ? data : undefined,
+      rawData: data.length <= MAX_ROWS_READ ? data : undefined,
       tables: tableNames,
     };
   } catch (error: any) {
@@ -394,6 +402,15 @@ export async function parseSQLite(buffer: Buffer, filename: string): Promise<Dat
       schema: [],
       error: error.message,
     };
+  } finally {
+    try {
+      if (db) db.close();
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (e) {
+      console.warn('Failed to clean up temp sqlite file:', e);
+    }
   }
 }
 
@@ -416,7 +433,6 @@ export async function parseJupyterNotebook(buffer: Buffer, filename: string): Pr
       if (cell.cell_type === 'code') {
         codeCells.push(source);
         
-        // Extract outputs
         if (cell.outputs && Array.isArray(cell.outputs)) {
           for (const output of cell.outputs) {
             if (output.text) {
@@ -439,7 +455,15 @@ export async function parseJupyterNotebook(buffer: Buffer, filename: string): Pr
       cellCount: notebook.cells.length,
       codeCells,
       markdownCells,
-      outputs: outputs.slice(0, 20), // Limit outputs
+      outputs: outputs.slice(0, 20),
+      rowCount: codeCells.length,
+      columnCount: 0,
+      columns: ['code', 'type'],
+      schema: [
+        { name: 'code', type: 'string' },
+        { name: 'type', type: 'string' }
+      ],
+      preview: codeCells.slice(0, PREVIEW_ROWS).map((code, i) => ({ code, type: 'code', index: i })),
     };
   } catch (error: any) {
     return {
@@ -450,6 +474,11 @@ export async function parseJupyterNotebook(buffer: Buffer, filename: string): Pr
       codeCells: [],
       markdownCells: [],
       outputs: [],
+      rowCount: 0,
+      columnCount: 0,
+      columns: [],
+      schema: [],
+      preview: [],
       error: error.message,
     };
   }
