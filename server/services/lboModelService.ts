@@ -311,9 +311,10 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   const netIncome: number[] = [0]; // Net income (for P&L display only)
   
   const sweepPercent = cashFlowSweepPercent;
-  console.log(`[LBO Model] ============ CORRECT LBO MATH ============`);
-  console.log(`[LBO Model] Using UNLEVERED FCF = NOPAT + D&A - CapEx - ΔNWC`);
-  console.log(`[LBO Model] Cash for Principal = UFCF - Interest`);
+  console.log(`[LBO Model] ============ STANDARD LBO MATH WITH TAX SHIELD ============`);
+  console.log(`[LBO Model] UFCF = NOPAT + D&A - CapEx - ΔNWC`);
+  console.log(`[LBO Model] CFADS = UFCF - After-Tax Interest (Interest × (1 - TaxRate))`);
+  console.log(`[LBO Model] Tax Shield = Interest × TaxRate (adds ~5-7% to CFADS)`);
   console.log(`[LBO Model] Initial: Senior=${seniorDebtAmount.toFixed(2)}M, Sub=${subDebtAmount.toFixed(2)}M, Sweep=${(sweepPercent * 100).toFixed(0)}%`);
   
   for (let i = 1; i <= 5; i++) {
@@ -350,17 +351,27 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     const ebt = ebit[i] - totalInterest - mgmtFee;
     netIncome.push(Math.max(0, ebt) * (1 - taxRate));
     
-    // ========== STEP 4: Cash Available for Debt Principal ==========
-    // After paying interest, remaining cash is available for principal
-    const cashAfterInterest = ufcf - totalInterest;
-    cashForDebt.push(cashAfterInterest);
+    // ========== STEP 4: Cash Available for Debt Principal (CFADS) ==========
+    // CRITICAL: Interest is tax-deductible! The interest tax shield reduces cash taxes.
+    // 
+    // CFADS = UFCF - After-Tax Interest
+    //       = UFCF - Interest × (1 - TaxRate)
+    //       = UFCF - Interest + (Interest × TaxRate)  ← adds back the tax shield
+    //
+    // This correctly captures the tax benefit of interest deductions.
+    const interestTaxShield = totalInterest * taxRate;
+    const afterTaxInterest = totalInterest - interestTaxShield; // = Interest × (1 - TaxRate)
+    const cfads = ufcf - afterTaxInterest;
+    cashForDebt.push(cfads);
+    
+    console.log(`[LBO Model] Year ${i}: Tax Shield=${interestTaxShield.toFixed(2)}M (Interest ${totalInterest.toFixed(2)}M × ${(taxRate*100).toFixed(0)}%), After-Tax Interest=${afterTaxInterest.toFixed(2)}M`);
     
     // ========== STEP 5: Debt Sweep - Senior First, then Sub ==========
     const seniorBeginning = seniorDebt[i - 1];
     const subBeginning = subDebt[i - 1] + (subDebt[i - 1] * subDebtPIK); // Add PIK if any
     
-    // Sweep amount = sweepPercent of positive cash available
-    const sweepCash = Math.max(0, cashAfterInterest) * sweepPercent;
+    // Sweep amount = sweepPercent of positive CFADS (cash available for debt service)
+    const sweepCash = Math.max(0, cfads) * sweepPercent;
     
     // Senior paydown = min(Sweep Cash, Senior Beginning Balance)
     const seniorPaydown = Math.min(sweepCash, seniorBeginning);
@@ -380,7 +391,7 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     subDebt.push(Math.max(0, subEnding));
     cashSweep.push(seniorPaydown + subPaydown);
     
-    console.log(`[LBO Model] Year ${i}: UFCF=${ufcf.toFixed(2)}M, Interest=${totalInterest.toFixed(2)}M, Cash for Principal=${cashAfterInterest.toFixed(2)}M, Sweep(${(sweepPercent*100).toFixed(0)}%)=${sweepCash.toFixed(2)}M`);
+    console.log(`[LBO Model] Year ${i}: UFCF=${ufcf.toFixed(2)}M, Interest=${totalInterest.toFixed(2)}M (After-Tax=${afterTaxInterest.toFixed(2)}M), CFADS=${cfads.toFixed(2)}M, Sweep(${(sweepPercent*100).toFixed(0)}%)=${sweepCash.toFixed(2)}M`);
     console.log(`[LBO Model]   Senior: Beg=${seniorBeginning.toFixed(2)}M → Paydown=${seniorPaydown.toFixed(2)}M → End=${seniorEnding.toFixed(2)}M`);
     console.log(`[LBO Model]   Sub: Beg=${subBeginning.toFixed(2)}M → Paydown=${subPaydown.toFixed(2)}M → End=${subEnding.toFixed(2)}M`);
   }
