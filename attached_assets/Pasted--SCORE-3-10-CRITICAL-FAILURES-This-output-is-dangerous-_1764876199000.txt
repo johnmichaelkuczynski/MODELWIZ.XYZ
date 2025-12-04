@@ -1,0 +1,210 @@
+**SCORE: 3/10 — CRITICAL FAILURES**
+
+This output is dangerous. If a banker followed this recommendation, the deal would blow up. Here's the Replit fix:
+
+---
+
+**FIX THE FOLLOWING BUGS IN THE IPO PRICING FUNCTION:**
+
+---
+
+**BUG 1: FUNCTION USES EV/REVENUE FOR PRE-REVENUE COMPANIES**
+
+Current behavior: Function outputs "Infinity×" for NTM EV/Revenue when revenue = $0.
+
+Correct behavior: When `financials.guidance.fy2026_revenue == 0` OR when `sector == "Biotechnology"`, the function MUST switch valuation methodology to EV/raNPV (Enterprise Value divided by risk-adjusted Net Present Value).
+
+The input provides this data:
+- `valuation_inputs.risk_adjusted_npv.total_ranpv = 1,138,000,000`
+- `comp_summary.median_ev_per_ranpv = 2.4`
+
+Correct calculation at $24:
+- Post-IPO shares = 95M + 12M + 3M + 2.25M = 112,250,000
+- Market Cap = $24 × 112,250,000 = $2,694,000,000
+- Post-IPO Cash = $89M + $414M gross proceeds = $503,000,000
+- EV = $2,694M − $503M = $2,191,000,000
+- EV/raNPV = $2,191M / $1,138M = 1.93×
+- vs peer median 2.4× = −20% (DISCOUNT, not infinity)
+
+Add conditional logic:
+```
+if (revenue_ntm == 0 || sector == "Biotechnology") {
+  valuation_metric = "EV/raNPV"
+  valuation_multiple = ev / ranpv
+  peer_comparison = (valuation_multiple / comp_summary.median_ev_per_ranpv) - 1
+}
+```
+
+---
+
+**BUG 2: "DCF" LABEL IS WRONG FOR BIOTECH**
+
+Current behavior: Function shows "DCF $10.66 support" — this is actually raNPV per share, not DCF.
+
+Correct behavior: Read the valuation type from input. When `valuation_inputs.risk_adjusted_npv` exists, label it "raNPV/share" not "DCF."
+
+Change output label dynamically:
+```
+if (valuation_inputs.risk_adjusted_npv) {
+  fair_value_label = "raNPV"
+  fair_value_per_share = valuation_inputs.risk_adjusted_npv.ranpv_per_share
+} else if (valuation_inputs.dcf) {
+  fair_value_label = "DCF"
+  fair_value_per_share = valuation_inputs.dcf.fair_value_per_share
+}
+```
+
+---
+
+**BUG 3: IMPLIED POP CALCULATION IS BROKEN FOR BIOTECH**
+
+Current behavior: Shows 0% pop at all prices.
+
+Correct behavior: Use sector-specific historical benchmarks from input.
+
+The input provides:
+- `historical_benchmarks.sector_ipos_2024_2025.avg_day1_return = -0.04`
+- `historical_benchmarks.sector_ipos_2024_2025.median_day1_return = -0.08`
+
+For biotech with weak book coverage (<5×), expected pop should be NEGATIVE:
+```
+if (sector == "Biotechnology") {
+  base_expected_return = historical_benchmarks.sector_ipos_2024_2025.median_day1_return
+  
+  // Adjust for book quality
+  if (oversubscription < 5) {
+    book_penalty = (5 - oversubscription) * -0.03  // -3% per turn under 5×
+  }
+  
+  // Adjust for pricing vs fair value
+  premium_to_fair_value = (offer_price / ranpv_per_share) - 1
+  valuation_penalty = premium_to_fair_value * -0.15  // penalize overpricing
+  
+  implied_pop = base_expected_return + book_penalty + valuation_penalty
+}
+```
+
+At $24 with 3.2× book and 125% premium to raNPV:
+- Base: −8%
+- Book penalty: (5 − 3.2) × −3% = −5.4%
+- Valuation penalty: 1.25 × −15% = −18.75%
+- **Expected Day-1 Return: −32%**
+
+---
+
+**BUG 4: RECOMMENDATION IGNORES CEO DIRECTIVE**
+
+Current behavior: Recommends $24 (top of range).
+
+Correct behavior: Parse `management_guidance.pricing_directive.priority` and weight recommendation accordingly.
+
+CEO said:
+- `priority: "runway_extension"` — means GET THE DEAL DONE
+- `min_acceptable_price: 18`
+- `verbatim: "I'd rather price at $20 and get the deal done than push for $24 and risk a busted book"`
+
+When `priority == "runway_extension"` AND `oversubscription < 5×` at top of range:
+```
+if (management_guidance.pricing_directive.priority == "runway_extension" 
+    && get_oversubscription(range_high) < 5) {
+  
+  // Find price where book is comfortably covered (>5×)
+  recommended_price = find_price_at_coverage(5.0)
+  
+  // Never recommend above CEO's comfort zone when book is weak
+  recommendation_ceiling = range_midpoint
+}
+```
+
+Correct recommendation should be **$20–$21**, not $24.
+
+---
+
+**BUG 5: NO DISCOUNT FOR SECONDARY SELLING**
+
+Current behavior: Function ignores that insiders are selling at IPO.
+
+Correct behavior: When `secondary_shares_offered > 0`, apply an optics discount.
+
+```
+if (secondary_shares_offered > 0) {
+  secondary_pct = secondary_shares_offered / total_shares_offered
+  
+  if (special_considerations.secondary_component.optics == "negative") {
+    secondary_discount = 0.03 + (secondary_pct * 0.05)  // 3-8% discount
+  }
+  
+  adjusted_fair_value = base_fair_value * (1 - secondary_discount)
+}
+```
+
+---
+
+**BUG 6: NO BINARY CATALYST RISK ADJUSTMENT**
+
+Current behavior: Function ignores upcoming Phase 3 data readout.
+
+Correct behavior: When `risk_factors.binary_catalyst == true`, apply volatility/risk discount.
+
+```
+if (risk_factors.binary_catalyst == true) {
+  months_to_catalyst = months_between(pricing_date, pipeline.lead_asset.data_readout)
+  
+  if (months_to_catalyst < 6) {
+    catalyst_discount = 0.10  // 10% discount for near-term binary
+  } else if (months_to_catalyst < 12) {
+    catalyst_discount = 0.05
+  }
+  
+  // Adjust expected pop downward — investors want cushion
+  implied_pop = implied_pop - catalyst_discount
+}
+```
+
+---
+
+**BUG 7: OVERSUBSCRIPTION TIERS NOT INTERPOLATED**
+
+Current behavior: Oversubscription jumps from 5.8× at $23 to 3.2× at $24 with no interpolation.
+
+Correct behavior: Either interpolate smoothly OR show tier boundaries explicitly in output.
+
+Option A — Interpolate:
+```
+function get_oversubscription(price) {
+  // Sort indications by price_floor descending
+  for each tier in order_book.indications (sorted desc by price_floor) {
+    if (price >= tier.price_floor) {
+      return tier.oversubscription_multiple
+    }
+  }
+}
+```
+
+Option B — Show boundaries in output:
+```
+Oversubscription    5.8× (at $22)  |  3.2× (at $24+)
+```
+
+Either way, make it clear that book coverage DROPS significantly at $24.
+
+---
+
+**VALIDATION TEST AFTER FIXES:**
+
+Run the Nexus Therapeutics input again. Correct output should show:
+
+| Field | Wrong (Current) | Correct |
+|-------|-----------------|---------|
+| Valuation Metric | NTM EV/Revenue | EV/raNPV |
+| Multiple at $24 | Infinity× | 1.93× |
+| vs Peer Median | +Infinity% | −20% |
+| Fair Value Label | DCF $10.66 | raNPV $10.66 |
+| Price vs Fair Value | 225% | 225% (flag as WARNING) |
+| Implied Day-1 Pop | 0% | −25% to −35% |
+| Recommended Price | $24 | $20–$21 |
+| Recommendation Rationale | Should cite weak book, CEO directive, binary risk |
+
+---
+
+**END OF INSTRUCTIONS**
