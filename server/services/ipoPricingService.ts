@@ -916,35 +916,38 @@ function formatIPOMemo(
   const {
     companyName,
     sector,
-    fairValuePerShare,
+    fairValuePerShare = 0,
     fairValueType,
     totalRaNPV = 0,
-    peerMedianEVRevenue,
+    peerMedianEVRevenue = 0,
     peerMedianEVRaNPV = 0,
-    ntmRevenue,
+    ntmRevenue = 0,
     sectorMedianFirstDayPop,
     sectorAverageFirstDayPop,
     historicalFirstDayPop,
-    indicatedPriceRangeLow,
-    indicatedPriceRangeHigh,
+    indicatedPriceRangeLow = 0,
+    indicatedPriceRangeHigh = 0,
   } = assumptions;
 
   const isBiotech = sector === "biotech";
   const isPreRevenue = ntmRevenue === 0 || ntmRevenue < 1;
   const useRaNPVValuation = isBiotech || isPreRevenue;
   
-  const companyNameUpper = companyName.toUpperCase();
+  const companyNameUpper = (companyName || "COMPANY").toUpperCase();
   
   const recommendedRow = pricingMatrix.find(r => Math.abs(r.offerPrice - recommendedPrice) < 0.5);
   if (!recommendedRow) return "Error: Could not find recommended row";
   
-  const popPercent = (recommendedRow.adjustedImpliedPop * 100).toFixed(0);
-  const grossProceeds = Math.round(recommendedRow.grossProceedsM);
-  const marketCapB = (recommendedRow.marketCapM / 1000).toFixed(1);
-  const evB = (recommendedRow.enterpriseValueM / 1000).toFixed(1);
+  const popPercent = ((recommendedRow.adjustedImpliedPop || 0) * 100).toFixed(0);
+  const grossProceeds = Math.round(recommendedRow.grossProceedsM || 0);
+  const marketCapB = ((recommendedRow.marketCapM || 0) / 1000).toFixed(1);
+  const evB = ((recommendedRow.enterpriseValueM || 0) / 1000).toFixed(1);
   
-  // BUG FIX #2: Use correct fair value label
+  // Use correct fair value label
   const fairValueLabel = fairValueType === "ranpv" ? "raNPV" : "DCF";
+  const safeFairValuePerShare = fairValuePerShare || 0;
+  const safePeerMedianEVRevenue = peerMedianEVRevenue || 0;
+  const safePeerMedianEVRaNPV = peerMedianEVRaNPV || 0;
   
   // Sector historical label
   const baseExpected = sectorMedianFirstDayPop ?? sectorAverageFirstDayPop ?? historicalFirstDayPop ?? 0;
@@ -973,20 +976,20 @@ function formatIPOMemo(
   memo += `Market Cap: ~$${marketCapB}B post-greenshoe\n`;
   memo += `Enterprise Value: ~$${evB}B\n\n`;
   
-  // BUG FIX #1 & #2: Use correct valuation metric
+  // Use correct valuation metric
   if (useRaNPVValuation && totalRaNPV > 0) {
-    const evRaNPVMultiple = recommendedRow.evRaNPV.toFixed(2);
-    const peerDiffPercent = (recommendedRow.vsPeerMedianRaNPV * 100).toFixed(0);
+    const evRaNPVMultiple = (recommendedRow.evRaNPV || 0).toFixed(2);
+    const peerDiffPercent = ((recommendedRow.vsPeerMedianRaNPV || 0) * 100).toFixed(0);
     memo += `Valuation Method: EV/raNPV (biotech/pre-revenue)\n`;
-    memo += `EV/raNPV: ${evRaNPVMultiple}× (Peer Median: ${peerMedianEVRaNPV.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
+    memo += `EV/raNPV: ${evRaNPVMultiple}× (Peer Median: ${safePeerMedianEVRaNPV.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
     memo += `Total raNPV: $${totalRaNPV.toFixed(0)}M\n`;
   } else {
-    const evMultiple = recommendedRow.ntmEVRevenue.toFixed(1);
-    const peerDiffPercent = (recommendedRow.vsPeerMedianRevenue * 100).toFixed(0);
-    memo += `NTM EV/Revenue: ${evMultiple}× (Peer Median: ${peerMedianEVRevenue.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
+    const evMultiple = (recommendedRow.ntmEVRevenue === Infinity || recommendedRow.ntmEVRevenue == null) ? "N/A" : recommendedRow.ntmEVRevenue.toFixed(1);
+    const peerDiffPercent = ((recommendedRow.vsPeerMedianRevenue || 0) * 100).toFixed(0);
+    memo += `NTM EV/Revenue: ${evMultiple}× (Peer Median: ${safePeerMedianEVRevenue.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
   }
   
-  memo += `${fairValueLabel}/share: $${fairValuePerShare.toFixed(2)} (offer = ${(recommendedRow.fairValueSupport * 100).toFixed(0)}%)\n\n`;
+  memo += `${fairValueLabel}/share: $${safeFairValuePerShare.toFixed(2)} (offer = ${((recommendedRow.fairValueSupport || 0) * 100).toFixed(0)}%)\n\n`;
   
   memo += `Pricing Matrix\n\n`;
   
@@ -1002,99 +1005,99 @@ function formatIPOMemo(
   memo += "Market Cap             " + rows.map(r => pad(`$${Math.round(r.marketCapM).toLocaleString()}`, 10)).join("") + "\n";
   memo += "Enterprise Value       " + rows.map(r => pad(`$${Math.round(r.enterpriseValueM).toLocaleString()}`, 10)).join("") + "\n";
   
-  // BUG FIX #1: Show correct valuation metric
+  // Show correct valuation metric
   if (useRaNPVValuation && totalRaNPV > 0) {
-    memo += "EV/raNPV               " + rows.map(r => pad(`${r.evRaNPV.toFixed(2)}×`, 10)).join("") + "\n";
-    memo += `vs peer median ${peerMedianEVRaNPV.toFixed(1)}×   ` + rows.map(r => {
-      const pct = r.vsPeerMedianRaNPV * 100;
+    memo += "EV/raNPV               " + rows.map(r => pad(`${(r.evRaNPV || 0).toFixed(2)}×`, 10)).join("") + "\n";
+    memo += `vs peer median ${safePeerMedianEVRaNPV.toFixed(1)}×   ` + rows.map(r => {
+      const pct = (r.vsPeerMedianRaNPV || 0) * 100;
       return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
     }).join("") + "\n";
   } else {
     memo += "NTM EV/Revenue         " + rows.map(r => {
-      if (r.ntmEVRevenue === Infinity) return pad("N/A", 10);
+      if (r.ntmEVRevenue === Infinity || r.ntmEVRevenue == null) return pad("N/A", 10);
       return pad(`${r.ntmEVRevenue.toFixed(1)}×`, 10);
     }).join("") + "\n";
-    memo += `vs peer median ${peerMedianEVRevenue.toFixed(1)}×   ` + rows.map(r => {
-      if (r.vsPeerMedianRevenue === Infinity) return pad("N/A", 10);
-      const pct = r.vsPeerMedianRevenue * 100;
+    memo += `vs peer median ${safePeerMedianEVRevenue.toFixed(1)}×   ` + rows.map(r => {
+      if (r.vsPeerMedianRevenue === Infinity || r.vsPeerMedianRevenue == null) return pad("N/A", 10);
+      const pct = (r.vsPeerMedianRevenue || 0) * 100;
       return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
     }).join("") + "\n";
   }
   
-  // BUG FIX #2: Use correct label
-  memo += `${fairValueLabel} $${fairValuePerShare.toFixed(2)} support     ` + rows.map(r => pad(`${(r.fairValueSupport * 100).toFixed(0)}%`, 10)).join("") + "\n";
+  // Use correct label
+  memo += `${fairValueLabel} $${safeFairValuePerShare.toFixed(2)} support     ` + rows.map(r => pad(`${((r.fairValueSupport || 0) * 100).toFixed(0)}%`, 10)).join("") + "\n";
   memo += "Gross proceeds         " + rows.map(r => pad(`$${Math.round(r.grossProceedsM)}`, 10)).join("") + "\n";
   
   // Show order book tier and both raw and effective oversubscription
   memo += "Order Book Tier        " + rows.map(r => pad(r.orderBookTier || "N/A", 10)).join("") + "\n";
-  memo += "Raw Oversubscription   " + rows.map(r => pad(`${r.oversubscription.toFixed(1)}×`, 10)).join("") + "\n";
-  // BUG FIX #4: Show effective oversubscription after investor drop-off
-  if (rows.some(r => r.effectiveOversubscription !== r.oversubscription)) {
-    memo += "Effective Oversub      " + rows.map(r => pad(`${r.effectiveOversubscription.toFixed(1)}×`, 10)).join("") + "\n";
-    memo += "Demand Lost ($M)       " + rows.map(r => pad(r.demandLostM > 0 ? `$${r.demandLostM}` : "-", 10)).join("") + "\n";
+  memo += "Raw Oversubscription   " + rows.map(r => pad(`${(r.oversubscription || 0).toFixed(1)}×`, 10)).join("") + "\n";
+  // Show effective oversubscription after investor drop-off
+  if (rows.some(r => (r.effectiveOversubscription || 0) !== (r.oversubscription || 0))) {
+    memo += "Effective Oversub      " + rows.map(r => pad(`${(r.effectiveOversubscription || 0).toFixed(1)}×`, 10)).join("") + "\n";
+    memo += "Demand Lost ($M)       " + rows.map(r => pad((r.demandLostM || 0) > 0 ? `$${r.demandLostM}` : "-", 10)).join("") + "\n";
   }
   
-  // BUG FIX #1: Show down-round status
+  // Show down-round status
   if (rows.some(r => r.isDownRound)) {
     memo += "Down-Round %           " + rows.map(r => {
       if (!r.isDownRound) return pad("-", 10);
-      return pad(`${(r.downRoundPercent * 100).toFixed(1)}%`, 10);
+      return pad(`${((r.downRoundPercent || 0) * 100).toFixed(1)}%`, 10);
     }).join("") + "\n";
   }
   
   // Show all pop adjustments
   memo += `Day-1 Pop (${histPopLabel})\n`;
   memo += "  Base expected        " + rows.map(r => {
-    const pct = r.baseImpliedPop * 100;
+    const pct = (r.baseImpliedPop || 0) * 100;
     return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
   }).join("") + "\n";
   memo += "  Book adjustment      " + rows.map(r => {
-    const pct = r.bookQualityAdjustment * 100;
+    const pct = (r.bookQualityAdjustment || 0) * 100;
     return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
   }).join("") + "\n";
   memo += "  Valuation penalty    " + rows.map(r => {
-    const pct = r.valuationPenalty * 100;
+    const pct = (r.valuationPenalty || 0) * 100;
     return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
   }).join("") + "\n";
-  if (rows.some(r => r.secondaryDiscount > 0)) {
+  if (rows.some(r => (r.secondaryDiscount || 0) > 0)) {
     memo += "  Secondary discount   " + rows.map(r => {
-      const pct = -r.secondaryDiscount * 100;
+      const pct = -(r.secondaryDiscount || 0) * 100;
       return pad(`${pct.toFixed(0)}%`, 10);
     }).join("") + "\n";
   }
-  if (rows.some(r => r.catalystDiscount > 0)) {
+  if (rows.some(r => (r.catalystDiscount || 0) > 0)) {
     memo += "  Catalyst risk        " + rows.map(r => {
-      const pct = -r.catalystDiscount * 100;
+      const pct = -(r.catalystDiscount || 0) * 100;
       return pad(`${pct.toFixed(0)}%`, 10);
     }).join("") + "\n";
   }
-  // BUG FIX #1: Show down-round discount
-  if (rows.some(r => r.downRoundDiscount > 0)) {
+  // Show down-round discount
+  if (rows.some(r => (r.downRoundDiscount || 0) > 0)) {
     memo += "  Down-round discount  " + rows.map(r => {
-      const pct = -r.downRoundDiscount * 100;
+      const pct = -(r.downRoundDiscount || 0) * 100;
       return pad(`${pct.toFixed(1)}%`, 10);
     }).join("") + "\n";
   }
-  // BUG FIX #2: Show dual-class discount
-  if (rows.some(r => r.dualClassDiscount > 0)) {
+  // Show dual-class discount
+  if (rows.some(r => (r.dualClassDiscount || 0) > 0)) {
     memo += "  Dual-class discount  " + rows.map(r => {
-      const pct = -r.dualClassDiscount * 100;
+      const pct = -(r.dualClassDiscount || 0) * 100;
       return pad(`${pct.toFixed(0)}%`, 10);
     }).join("") + "\n";
   }
-  // BUG FIX #6: Show customer concentration discount
-  if (rows.some(r => r.customerConcentrationDiscount > 0)) {
+  // Show customer concentration discount
+  if (rows.some(r => (r.customerConcentrationDiscount || 0) > 0)) {
     memo += "  Concentration disc   " + rows.map(r => {
-      const pct = -r.customerConcentrationDiscount * 100;
+      const pct = -(r.customerConcentrationDiscount || 0) * 100;
       return pad(`${pct.toFixed(1)}%`, 10);
     }).join("") + "\n";
   }
   memo += "  ADJUSTED POP         " + rows.map(r => {
-    const pct = r.adjustedImpliedPop * 100;
+    const pct = (r.adjustedImpliedPop || 0) * 100;
     return pad(`${pct >= 0 ? '+' : ''}${pct.toFixed(0)}%`, 10);
   }).join("") + "\n";
   
-  memo += "Founder ownership      " + rows.map(r => pad(`${(r.founderOwnershipPost * 100).toFixed(1)}%`, 10)).join("") + "\n";
+  memo += "Founder ownership      " + rows.map(r => pad(`${((r.founderOwnershipPost || 0) * 100).toFixed(1)}%`, 10)).join("") + "\n";
   
   memo += "\nRecommendation Rationale:\n";
   for (const r of rationale) {
