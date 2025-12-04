@@ -2592,131 +2592,105 @@ Structural understanding is always understanding of relationships. Observational
       let userPrompt = "";
 
       if (mode === "reconstruction") {
-        // Count input words for budget enforcement
+        // Count input words for reference
         const inputWordCount = text.trim().split(/\s+/).length;
-        const targetWordCount = Math.floor(inputWordCount * 0.85); // 85% of input
-        const maxWordCount = inputWordCount; // Never exceed input
         
         if (fidelityLevel === 'conservative') {
-          systemPrompt = `You are a LOGIC SURGEON. You FIX broken reasoning. You do NOT decorate prose.
+          systemPrompt = `You are a RECONSTRUCTOR. You diagnose what's wrong with an argument and fix THAT SPECIFIC THING.
 
-WHAT YOU DO:
-- Find the 2-3 WEAKEST points in the argument (gaps, unsupported leaps, vague claims, hidden assumptions)
-- FIX those specific weaknesses with actual reasoning or evidence
-- CUT everything that doesn't serve the argument
-- Make the logic DIAGRAMMABLE: someone could draw the inference steps
+FIRST: DIAGNOSE the problem. The text has ONE of these issues:
 
-WHAT YOU DON'T DO:
-- Add fancy words
-- Make it "sound smarter"
-- Expand prose
-- Add hedging or qualifiers
-- Write longer sentences
+A. VAGUE CLAIM → Make it clear and specific
+B. WEAK ARGUMENT → Make it strong (add the missing logical step or evidence)
+C. FALSE CLAIM → Find the closest TRUE claim and defend that instead
+D. GOOD BUT OBSCURE/IMPLICIT → Make the reasoning clear and explicit
+E. NEEDS EMPIRICAL SUPPORT → Provide the empirical argument (data, examples, studies)
+F. ELLIPTICAL (skips steps) → Fill in the missing steps
 
-SMARTER = clearer logic, fewer gaps, specific claims, concrete evidence
-SMARTER ≠ bigger words, longer sentences, more qualifications
+THEN: Fix the diagnosed problem. Do ONLY that. Don't redecorate.
 
-WORD BUDGET: ${targetWordCount}-${maxWordCount} words. Input is ${inputWordCount} words. You MUST be at or BELOW this count.
+WHAT "FIX" MEANS:
+- If vague: state exactly what is meant
+- If weak: add the missing premise or evidence that makes it strong
+- If false: identify the closest true version and argue for that
+- If implicit: spell out what was left unsaid
+- If needs empirical support: provide specific data/examples
+- If elliptical: insert the skipped logical steps
 
-BANNED WORDS/PHRASES (instant failure if used):
-- utilize, facilitate, leverage, implement, optimize
-- in terms of, with respect to, in the context of
-- it is important to note, it should be noted
-- furthermore, moreover, additionally (unless adding genuinely new info)
-- multifaceted, nuanced, complex, intricate
-- "studies show" (without naming the study)
-- "experts agree" (without naming experts)
-- "many believe" (who? how many?)
+DO NOT:
+- Add fancy vocabulary
+- Expand for the sake of length
+- Add hedging or qualifications
+- Rewrite what already works
+- Sound "more academic"
 
-OUTPUT FORMAT:
-CLAIM: [One sentence. Specific. Falsifiable.]
+The output should read like what the author WOULD have written if they were clearer thinkers—same voice, same intent, but with the reasoning fixed.`;
 
-BECAUSE:
-P1. [Premise - max 20 words, specific, testable]
-P2. [Premise - max 20 words]
-P3. [Premise if needed]
+          userPrompt = `RECONSTRUCT THIS TEXT
 
-EVIDENCE:
-- [Specific datum, example, or fact for P1]
-- [Specific datum, example, or fact for P2]
-
-THEREFORE: [Conclusion restated, showing how P1+P2→Claim]
-
-WORD COUNT: [X] (must be ≤${maxWordCount})`;
-
-          userPrompt = `FIX THIS ARGUMENT (don't decorate it)
-
-INPUT TEXT (${inputWordCount} words):
 ${text}
 
-${targetDomain ? `Domain: ${targetDomain}` : ''}
-${customInstructions ? `\nUSER INSTRUCTIONS: ${customInstructions}` : ''}
+${targetDomain ? `Domain context: ${targetDomain}` : ''}
+${customInstructions ? `\nUser instructions: ${customInstructions}` : ''}
 
-STEP 1 - DIAGNOSE (do this mentally, don't output):
-What are the 2-3 weakest points? (vague claims, logical gaps, missing evidence, hidden assumptions)
+STEP 1 - DIAGNOSE (state this briefly):
+What type of problem does this text have?
+- Vague claim?
+- Weak argument?
+- False claim (needs true substitute)?
+- Good but obscure/implicit?
+- Needs empirical support?
+- Elliptical (skips steps)?
 
-STEP 2 - OUTPUT THE FIXED VERSION:
-Use the format: CLAIM / BECAUSE (premises) / EVIDENCE / THEREFORE
+STEP 2 - RECONSTRUCT:
+Fix the diagnosed problem. Output the improved version.
 
-RULES:
-- Total words MUST be ≤${maxWordCount} (input was ${inputWordCount})
-- Each premise max 20 words
-- Evidence must be SPECIFIC (names, numbers, examples)
-- No filler, no decoration, no "sounding smart"
-- End with: WORD COUNT: [X]`;
+FORMAT:
+DIAGNOSIS: [1-2 sentences identifying the problem type]
+
+RECONSTRUCTED:
+[The fixed text - same voice as original, but with reasoning repaired]`;
 
         } else {
-          // AGGRESSIVE MODE - maximum truth transformation
-          systemPrompt = `You are a TRUTH MACHINE. You replace vague/false claims with SPECIFIC TRUE claims.
+          // AGGRESSIVE MODE - maximum intervention
+          systemPrompt = `You are an AGGRESSIVE RECONSTRUCTOR. You diagnose ALL problems and fix them.
 
-YOUR JOB:
-1. Identify each claim in the input
-2. For each claim that is vague or false: REPLACE it with a specific, literally true version
-3. For each claim, add ONE concrete example (real name, real number, real event)
-4. CUT any sentence that doesn't make a verifiable claim
+FOR EACH CLAIM OR ARGUMENT IN THE TEXT:
 
-NOT YOUR JOB:
-- Making prose "flow better"
-- Adding transitions
-- Expanding ideas
-- Using sophisticated vocabulary
+1. VAGUE? → Make it specific and clear
+2. WEAK? → Strengthen with missing logic or evidence  
+3. FALSE? → Replace with the closest true claim
+4. IMPLICIT? → Make explicit
+5. NEEDS DATA? → Add empirical support (real examples, real numbers)
+6. ELLIPTICAL? → Fill in skipped steps
 
-WORD BUDGET: ${targetWordCount}-${maxWordCount} words. Input is ${inputWordCount} words.
+You may need to apply multiple fixes to different parts.
 
-EXAMPLE TRANSFORMATION:
-BAD: "Many successful companies have used this approach"
-GOOD: "Amazon used this approach to reduce shipping costs 23% in 2019"
+PROVIDE REAL EVIDENCE:
+- Name specific studies, people, companies, events
+- Use actual numbers and dates
+- If you don't know the real data, say "needs citation" rather than making it up
 
-BAD: "Research shows that exercise improves mood"
-GOOD: "A 2018 Lancet study of 1.2M people found exercisers had 43% fewer bad mental health days"
+OUTPUT: The fully reconstructed text. Same voice as original but with all reasoning problems fixed.
 
-BAD: "This method has proven effective"  
-GOOD: "Toyota cut defects 40% after adopting this in 1965"
-
-BANNED:
-- Any claim without a specific example
-- "Studies show" without citation
-- "Experts agree" without names
-- "Often", "frequently", "many" without numbers
-- Adjective stacking (avoid: "robust, comprehensive, innovative approach")`;
+Do NOT add academic bloat or decorative language.`;
         
-          userPrompt = `MAKE THIS TRUE AND SPECIFIC
+          userPrompt = `AGGRESSIVELY RECONSTRUCT THIS TEXT
 
-INPUT (${inputWordCount} words):
 ${text}
 
 ${targetDomain ? `Domain: ${targetDomain}` : ''}
-${customInstructions ? `\nUSER INSTRUCTIONS: ${customInstructions}` : ''}
+${customInstructions ? `\nUser instructions: ${customInstructions}` : ''}
 
-FOR EACH CLAIM:
-1. Is it specific and literally true? Keep it.
-2. Is it vague? Replace with specific version + one real example.
-3. Is it false? Replace with a true claim in the same area + example.
-4. Is it filler? Delete it.
+Fix every problem you find:
+- Vague claims → specific claims
+- Weak arguments → strong arguments
+- False claims → closest true claims
+- Implicit reasoning → explicit reasoning
+- Missing evidence → real empirical support
+- Elliptical steps → filled-in steps
 
-OUTPUT: Just the fixed text. No commentary.
-Must be ≤${maxWordCount} words.
-End with: [WORD COUNT: X]`;
+OUTPUT: The reconstructed text only. No commentary.`;
         }
 
       } else if (mode === "isomorphism") {
