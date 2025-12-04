@@ -21,6 +21,7 @@ export interface LBOAssumptions {
   purchasePrice: number;
   entryMultiple: number;
   transactionCosts: number;
+  financingFees: number;
   managementRollover: number;
   
   // Financing Structure
@@ -33,6 +34,7 @@ export interface LBOAssumptions {
   revolverSize: number;
   revolverRate: number;
   sponsorEquity: number;
+  cashFlowSweepPercent: number;
   
   // Exit Assumptions
   exitYear: number;
@@ -63,6 +65,7 @@ Return a JSON object with the following structure:
   "purchasePrice": number (in millions),
   "entryMultiple": number (e.g., 10.5 for 10.5x EBITDA),
   "transactionCosts": number (as decimal, e.g., 0.02 for 2% of purchase price),
+  "financingFees": number (as decimal, e.g., 0.01 for 1% of total debt),
   "managementRollover": number (in millions),
   
   "seniorDebtAmount": number (in millions),
@@ -73,7 +76,8 @@ Return a JSON object with the following structure:
   "subDebtPIK": number (PIK interest as decimal, 0 if cash pay),
   "revolverSize": number (in millions),
   "revolverRate": number (as decimal),
-  "sponsorEquity": number (in millions),
+  "sponsorEquity": number (in millions - will be recalculated to balance sources=uses),
+  "cashFlowSweepPercent": number (as decimal, e.g., 0.75 for 75% FCF sweep to debt),
   
   "exitYear": number (typically 5),
   "exitMultiple": number,
@@ -92,8 +96,10 @@ If any value is not explicitly stated, use reasonable LBO industry defaults:
 - Tax rate: 25%
 - Entry multiple: 8-12x EBITDA
 - Transaction costs: 2-3% of purchase price
+- Financing fees: 1% of total debt (default 0.01)
 - Senior debt: 4-5x EBITDA at 5-7%
 - Subordinated debt: 1-2x EBITDA at 10-12%
+- Cash flow sweep: 75% of FCF to debt paydown (default 0.75)
 - Exit multiple: Similar to entry or slight expansion
 - Exit year: 5 years
 - Management fee: 1-2% of EBITDA
@@ -217,6 +223,7 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     purchasePrice,
     entryMultiple,
     transactionCosts,
+    financingFees = 0.01,
     managementRollover,
     seniorDebtAmount,
     seniorDebtRate,
@@ -224,12 +231,28 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     subDebtAmount,
     subDebtRate,
     subDebtPIK,
-    sponsorEquity,
+    cashFlowSweepPercent = 0.75,
     exitYear,
     exitMultiple,
     exitCosts,
     managementFeePercent,
   } = assumptions;
+  
+  // ============ SOURCES & USES - PROPERLY BALANCED ============
+  // Uses: Purchase Price + Transaction Costs + Financing Fees
+  const transactionCostsAmount = purchasePrice * transactionCosts;
+  const totalDebt = seniorDebtAmount + subDebtAmount;
+  const financingFeesAmount = totalDebt * financingFees;
+  const totalUses = purchasePrice + transactionCostsAmount + financingFeesAmount;
+  
+  // Sources: Debt + Management Rollover + Sponsor Equity (balancing item)
+  // Sponsor Equity = Total Uses - Debt - Management Rollover
+  const sponsorEquity = totalUses - seniorDebtAmount - subDebtAmount - managementRollover;
+  const totalSources = seniorDebtAmount + subDebtAmount + sponsorEquity + managementRollover;
+  
+  console.log(`[LBO Model] Sources & Uses Balance Check:`);
+  console.log(`  Uses: Purchase=${purchasePrice.toFixed(2)}M + TxnCosts=${transactionCostsAmount.toFixed(2)}M + FinFees=${financingFeesAmount.toFixed(2)}M = ${totalUses.toFixed(2)}M`);
+  console.log(`  Sources: Senior=${seniorDebtAmount.toFixed(2)}M + Sub=${subDebtAmount.toFixed(2)}M + Sponsor=${sponsorEquity.toFixed(2)}M + Rollover=${managementRollover.toFixed(2)}M = ${totalSources.toFixed(2)}M`);
 
   // Calculate projections
   const years = [0, 1, 2, 3, 4, 5];
@@ -247,10 +270,11 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     ebitda.push(revenue[i] * margin);
   }
 
-  // ============ DEBT SCHEDULE - SIMPLE EXCESS CASH FLOW SWEEP ============
-  // Logic: 100% of FCF goes to Senior Debt first, then Sub Debt
-  // Senior_Amort[t] = min(FCF[t], Senior_Balance[t-1])
-  // Sub_Amort[t] = min(FCF[t] - Senior_Amort[t], Sub_Balance[t-1])
+  // ============ DEBT SCHEDULE - FCF SWEEP WITH CONFIGURABLE % ============
+  // Logic: cashFlowSweepPercent (default 75%) of FCF goes to Senior Debt first, then Sub Debt
+  // Sweep_Cash = FCF * sweepPercent
+  // Senior_Paydown = min(Sweep_Cash, Senior_Balance)
+  // Sub_Paydown = min(Sweep_Cash - Senior_Paydown, Sub_Balance + PIK)
   
   const seniorDebt: number[] = [seniorDebtAmount];
   const subDebt: number[] = [subDebtAmount];
@@ -268,7 +292,8 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   const taxes: number[] = [0]; // Taxes by year
   const netIncome: number[] = [0]; // Net income by year
   
-  console.log(`[LBO Model] Initial debt structure: Senior=${seniorDebtAmount.toFixed(2)}M, Sub=${subDebtAmount.toFixed(2)}M`);
+  const sweepPercent = cashFlowSweepPercent;
+  console.log(`[LBO Model] Initial debt structure: Senior=${seniorDebtAmount.toFixed(2)}M, Sub=${subDebtAmount.toFixed(2)}M, FCF Sweep=${(sweepPercent * 100).toFixed(0)}%`);
   
   for (let i = 1; i <= 5; i++) {
     // ========== STEP 1: Calculate operating metrics ==========
@@ -299,21 +324,24 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     const ecf = netIncome[i] + da[i] - capex[i] - nwcDelta;
     freeCashFlow.push(ecf);
     
-    // ========== STEP 3: Debt sweep - SIMPLE LOGIC ==========
-    // All positive FCF goes to Senior first, then Sub
-    // NO complicated scheduled amortization - just pure cash sweep
+    // ========== STEP 3: Debt sweep - CONFIGURABLE % OF FCF ==========
+    // Only sweepPercent (e.g., 75%) of positive FCF goes to debt paydown
+    // Senior first, then Sub (with PIK accrual)
     
     const seniorBeginning = seniorDebt[i - 1];
     const subBeginning = subDebt[i - 1] + (subDebt[i - 1] * subDebtPIK); // Add PIK if any
     
-    // Senior amortization = min(ECF, Senior Beginning Balance)
-    const seniorPaydown = Math.min(Math.max(0, ecf), seniorBeginning);
+    // Calculate sweep amount = sweepPercent of positive FCF
+    const sweepCash = Math.max(0, ecf) * sweepPercent;
+    
+    // Senior paydown = min(Sweep Cash, Senior Beginning Balance)
+    const seniorPaydown = Math.min(sweepCash, seniorBeginning);
     const seniorEnding = seniorBeginning - seniorPaydown;
     
     // Cash remaining after Senior paydown
-    const cashAfterSenior = Math.max(0, ecf) - seniorPaydown;
+    const cashAfterSenior = sweepCash - seniorPaydown;
     
-    // Sub amortization = min(Remaining Cash, Sub Beginning Balance)
+    // Sub paydown = min(Remaining Sweep Cash, Sub Beginning Balance)
     const subPaydown = Math.min(cashAfterSenior, subBeginning);
     const subEnding = subBeginning - subPaydown;
     
@@ -324,7 +352,7 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     subDebt.push(Math.max(0, subEnding));
     cashSweep.push(seniorPaydown + subPaydown);
     
-    console.log(`[LBO Model] Year ${i}: ECF=${ecf.toFixed(2)}M | Senior: Beg=${seniorBeginning.toFixed(2)}M, Paydown=${seniorPaydown.toFixed(2)}M, End=${seniorEnding.toFixed(2)}M | Sub: Beg=${subBeginning.toFixed(2)}M, Paydown=${subPaydown.toFixed(2)}M, End=${subEnding.toFixed(2)}M`);
+    console.log(`[LBO Model] Year ${i}: FCF=${ecf.toFixed(2)}M, Sweep(${(sweepPercent*100).toFixed(0)}%)=${sweepCash.toFixed(2)}M | Senior: Beg=${seniorBeginning.toFixed(2)}M, Paydown=${seniorPaydown.toFixed(2)}M, End=${seniorEnding.toFixed(2)}M | Sub: Beg=${subBeginning.toFixed(2)}M, Paydown=${subPaydown.toFixed(2)}M, End=${subEnding.toFixed(2)}M`);
   }
 
   // Exit valuation
@@ -348,10 +376,6 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   const sponsorIRR = Math.pow(sponsorMOIC, 1 / exitYear) - 1;
   const managementIRR = managementRollover > 0 ? Math.pow(managementMOIC, 1 / exitYear) - 1 : 0;
 
-  // Sources and Uses
-  const totalSources = seniorDebtAmount + subDebtAmount + sponsorEquity + managementRollover;
-  const totalUses = purchasePrice * (1 + transactionCosts);
-  
   // Entry and Exit leverage
   const entryLeverage = (seniorDebtAmount + subDebtAmount) / ebitda[0];
   const exitLeverage = remainingDebt / exitEBITDA;
@@ -391,7 +415,8 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
       },
       uses: {
         purchasePrice,
-        transactionCosts: purchasePrice * transactionCosts,
+        transactionCosts: transactionCostsAmount,
+        financingFees: financingFeesAmount,
         total: totalUses,
       },
     },
@@ -472,7 +497,7 @@ export async function generateLBOExcel(assumptions: LBOAssumptions): Promise<Buf
   summarySheet.getCell("B7").numFmt = currencyFormat;
 
   summarySheet.getCell("A8").value = "Sponsor Equity:";
-  summarySheet.getCell("B8").value = assumptions.sponsorEquity;
+  summarySheet.getCell("B8").value = sourcesAndUses.sources.sponsorEquity;
   summarySheet.getCell("B8").numFmt = currencyFormat;
 
   summarySheet.getCell("A10").value = "RETURNS SUMMARY";
@@ -565,15 +590,32 @@ export async function generateLBOExcel(assumptions: LBOAssumptions): Promise<Buf
   suSheet.getCell("A11").value = "Purchase Price";
   suSheet.getCell("B11").value = sourcesAndUses.uses.purchasePrice;
   suSheet.getCell("B11").numFmt = currencyFormat;
+  suSheet.getCell("C11").value = sourcesAndUses.uses.purchasePrice / sourcesAndUses.uses.total;
+  suSheet.getCell("C11").numFmt = percentFormat;
 
   suSheet.getCell("A12").value = "Transaction Costs";
   suSheet.getCell("B12").value = sourcesAndUses.uses.transactionCosts;
   suSheet.getCell("B12").numFmt = currencyFormat;
+  suSheet.getCell("C12").value = sourcesAndUses.uses.transactionCosts / sourcesAndUses.uses.total;
+  suSheet.getCell("C12").numFmt = percentFormat;
 
-  suSheet.getCell("A13").value = "TOTAL USES";
-  suSheet.getCell("B13").value = sourcesAndUses.uses.total;
+  suSheet.getCell("A13").value = "Financing Fees";
+  suSheet.getCell("B13").value = sourcesAndUses.uses.financingFees;
   suSheet.getCell("B13").numFmt = currencyFormat;
-  suSheet.getRow(13).font = { bold: true };
+  suSheet.getCell("C13").value = sourcesAndUses.uses.financingFees / sourcesAndUses.uses.total;
+  suSheet.getCell("C13").numFmt = percentFormat;
+
+  suSheet.getCell("A14").value = "TOTAL USES";
+  suSheet.getCell("B14").value = sourcesAndUses.uses.total;
+  suSheet.getCell("B14").numFmt = currencyFormat;
+  suSheet.getCell("C14").value = 1.0;
+  suSheet.getCell("C14").numFmt = percentFormat;
+  suSheet.getRow(14).font = { bold: true };
+  
+  // Verify Sources = Uses
+  suSheet.getCell("A16").value = "Sources = Uses Check:";
+  suSheet.getCell("B16").value = Math.abs(sourcesAndUses.sources.total - sourcesAndUses.uses.total) < 0.01 ? "BALANCED" : "MISMATCH";
+  suSheet.getCell("B16").font = { bold: true, color: { argb: Math.abs(sourcesAndUses.sources.total - sourcesAndUses.uses.total) < 0.01 ? "FF008000" : "FFFF0000" } };
 
   // ============ OPERATING PROJECTIONS ============
   const projSheet = workbook.addWorksheet("Projections");
