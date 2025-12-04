@@ -469,22 +469,35 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     customerConcentrationTop5 = 0,
   } = assumptions;
 
-  const isBiotech = sector === "biotech";
+  // FIX: Sector detection - only treat as biotech if explicitly tagged biotech
+  // Don't force biotech mode just because revenue is missing
+  const isBiotech = sector === "biotech" || sector === "biopharmaceutical" || sector === "clinical-stage";
   const isPreRevenue = ntmRevenue === 0 || ntmRevenue < 1;
-  const useRaNPVValuation = isBiotech || isPreRevenue;
+  // Only use raNPV valuation if EXPLICITLY biotech/clinical-stage, not just missing revenue
+  const useRaNPVValuation = isBiotech && isPreRevenue;
   
   const warnings: string[] = [];
+  
+  // Add sector detection warning for non-biotech with missing revenue
+  if (isPreRevenue && !isBiotech) {
+    warnings.push(`Pre-revenue company detected but not marked as biotech - using standard valuation metrics. Set sector="biotech" if this is a clinical-stage company.`);
+  }
   
   // Determine if we're using dollar-based or share-based inputs
   const useDollarBased = (primaryDollarRaiseM !== undefined && primaryDollarRaiseM > 0);
   
   // BUG FIX #5: Calculate growth deceleration penalty for peer multiple
+  // ONLY apply to revenue-generating companies with explicit growth data (not biotech)
   // MECHANICAL: compression equals the deceleration rate itself (no embedded multiplier)
   let growthDecelPenalty = 0;
-  let growthAdjustedPeerMultiple = peerMedianEVRevenue;
-  if (growthRates && growthRates.fy2024to2025Growth && growthRates.fy2025to2026Growth) {
+  let growthAdjustedPeerMultiple = peerMedianEVRevenue || 0;
+  
+  // Only apply growth decel to non-biotech revenue companies with explicit growth rates
+  if (!isBiotech && !isPreRevenue && peerMedianEVRevenue > 0 && 
+      growthRates && growthRates.fy2024to2025Growth && growthRates.fy2024to2025Growth > 0 && 
+      growthRates.fy2025to2026Growth !== undefined) {
     const decelRate = 1 - (growthRates.fy2025to2026Growth / growthRates.fy2024to2025Growth);
-    if (decelRate > 0) {
+    if (decelRate > 0 && isFinite(decelRate)) {
       // MECHANICAL: growth decel penalty = the deceleration rate itself
       // If growth decelerates by 30%, multiple compresses by 30%
       growthDecelPenalty = decelRate;
@@ -641,21 +654,40 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     const enterpriseValueM = marketCapM + currentDebtM - postIPOCashM;
     
     // === VALUATION MULTIPLES ===
-    // NTM EV/Revenue - with consistent rounding
-    const ntmEVRevenue = isPreRevenue ? Infinity : Math.round((enterpriseValueM / ntmRevenue) * 10) / 10;
+    // NTM EV/Revenue - with guards for division by zero
+    // Return 0 (not Infinity) when data is missing - cleaner for display
+    let ntmEVRevenue = 0;
+    if (!isPreRevenue && ntmRevenue > 0 && isFinite(enterpriseValueM)) {
+      ntmEVRevenue = Math.round((enterpriseValueM / ntmRevenue) * 10) / 10;
+      if (!isFinite(ntmEVRevenue)) ntmEVRevenue = 0; // Guard
+    }
     
-    // EV/raNPV for biotech - with consistent rounding
-    const evRaNPV = totalRaNPV > 0 ? Math.round((enterpriseValueM / totalRaNPV) * 100) / 100 : 0;
+    // EV/raNPV for biotech - with guards
+    let evRaNPV = 0;
+    if (totalRaNPV > 0 && isFinite(enterpriseValueM)) {
+      evRaNPV = Math.round((enterpriseValueM / totalRaNPV) * 100) / 100;
+      if (!isFinite(evRaNPV)) evRaNPV = 0; // Guard
+    }
     
     // vs Peer Median comparisons (using growth-adjusted multiple for revenue comps)
-    const vsPeerMedianRevenue = isPreRevenue ? Infinity : 
-      Math.round(((ntmEVRevenue - growthAdjustedPeerMultiple) / growthAdjustedPeerMultiple) * 1000) / 1000;
-    const vsPeerMedianRaNPV = (totalRaNPV > 0 && peerMedianEVRaNPV > 0) 
-      ? Math.round(((evRaNPV - peerMedianEVRaNPV) / peerMedianEVRaNPV) * 1000) / 1000
-      : 0;
+    let vsPeerMedianRevenue = 0;
+    if (!isPreRevenue && ntmEVRevenue > 0 && growthAdjustedPeerMultiple > 0) {
+      vsPeerMedianRevenue = Math.round(((ntmEVRevenue - growthAdjustedPeerMultiple) / growthAdjustedPeerMultiple) * 1000) / 1000;
+      if (!isFinite(vsPeerMedianRevenue)) vsPeerMedianRevenue = 0; // Guard
+    }
     
-    // === FAIR VALUE SUPPORT - CONSISTENT ROUNDING ===
-    const fairValueSupport = Math.round((offerPrice / fairValuePerShare) * 1000) / 1000;
+    let vsPeerMedianRaNPV = 0;
+    if (totalRaNPV > 0 && evRaNPV > 0 && peerMedianEVRaNPV > 0) {
+      vsPeerMedianRaNPV = Math.round(((evRaNPV - peerMedianEVRaNPV) / peerMedianEVRaNPV) * 1000) / 1000;
+      if (!isFinite(vsPeerMedianRaNPV)) vsPeerMedianRaNPV = 0; // Guard
+    }
+    
+    // === FAIR VALUE SUPPORT - CONSISTENT ROUNDING WITH GUARDS ===
+    let fairValueSupport = 0;
+    if (fairValuePerShare > 0 && offerPrice > 0) {
+      fairValueSupport = Math.round((offerPrice / fairValuePerShare) * 1000) / 1000;
+      if (!isFinite(fairValueSupport)) fairValueSupport = 0; // Guard
+    }
     
     // === ORDER BOOK LOOKUP - NO FABRICATED EXTRAPOLATION ===
     // Use ONLY explicit user-provided tiers, no invented decay rates
@@ -867,9 +899,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   // Recommendation based only on user inputs and mechanical relationships
   // No hardcoded thresholds - uses relative metrics from user data
   
-  // Default to midpoint of user-provided range
-  const rangeMidpoint = (indicatedPriceRangeLow + indicatedPriceRangeHigh) / 2;
-  let recommendedPrice = rangeMidpoint;
+  // Default to midpoint of computed range (may be user-provided or derived)
+  const rangeMidpoint = (minPrice + maxPrice) / 2;
+  let recommendedPrice = isFinite(rangeMidpoint) ? rangeMidpoint : minPrice;
   let recommendedRow: PricingRow | undefined;
   
   // Sort by price descending for selection logic
@@ -879,10 +911,10 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   if (managementPriority === "runway_extension") {
     // CEO prioritizes deal certainty - recommend lower end for safety
     // Use user-provided minAcceptablePrice or range low
-    recommendedPrice = minAcceptablePrice || indicatedPriceRangeLow;
+    recommendedPrice = minAcceptablePrice || minPrice;
     recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice);
     
-    if (!recommendedRow) {
+    if (!recommendedRow && sortedByPrice.length > 0) {
       recommendedRow = sortedByPrice[sortedByPrice.length - 1]; // Lowest price
       recommendedPrice = recommendedRow.offerPrice;
     }
@@ -890,20 +922,20 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     
   } else if (pricingAggressiveness === "maximum") {
     // CEO wants maximum - recommend top of range
-    recommendedPrice = indicatedPriceRangeHigh;
+    recommendedPrice = maxPrice;
     recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice);
     
-    if (!recommendedRow) {
+    if (!recommendedRow && sortedByPrice.length > 0) {
       recommendedRow = sortedByPrice[0]; // Highest price
       recommendedPrice = recommendedRow.offerPrice;
     }
     
   } else if (pricingAggressiveness === "conservative") {
     // Conservative - recommend bottom of range
-    recommendedPrice = indicatedPriceRangeLow;
+    recommendedPrice = minPrice;
     recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice);
     
-    if (!recommendedRow) {
+    if (!recommendedRow && sortedByPrice.length > 0) {
       recommendedRow = sortedByPrice[sortedByPrice.length - 1];
       recommendedPrice = recommendedRow.offerPrice;
     }
@@ -913,7 +945,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     recommendedPrice = Math.round(rangeMidpoint);
     recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice);
     
-    if (!recommendedRow) {
+    if (!recommendedRow && sortedByPrice.length > 0) {
       // Find closest to midpoint
       recommendedRow = sortedByPrice.reduce((closest, row) => 
         Math.abs(row.offerPrice - rangeMidpoint) < Math.abs(closest.offerPrice - rangeMidpoint) ? row : closest
@@ -922,10 +954,24 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     }
   }
   
-  // Ensure we have a row
-  if (!recommendedRow) {
+  // Ensure we have a row - guard against empty matrix
+  if (!recommendedRow && pricingMatrix.length > 0) {
     recommendedRow = pricingMatrix[Math.floor(pricingMatrix.length / 2)];
     recommendedPrice = recommendedRow.offerPrice;
+  }
+  
+  // Final guard - if still no row, return error
+  if (!recommendedRow) {
+    return {
+      assumptions,
+      pricingMatrix: [],
+      recommendedRangeLow: 0,
+      recommendedRangeHigh: 0,
+      recommendedPrice: 0,
+      rationale: [],
+      warnings: ["ERROR: Could not compute pricing matrix - check input data"],
+      memoText: "IPO PRICING ERROR\n\nCould not compute pricing matrix. Ensure all required inputs are provided.",
+    };
   }
   
   // Respect minimum acceptable price from user
@@ -934,9 +980,9 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     recommendedRow = pricingMatrix.find(r => r.offerPrice === recommendedPrice) || recommendedRow;
   }
   
-  // Recommended range = user-provided range (no fabricated offsets)
-  const recommendedRangeLow = indicatedPriceRangeLow;
-  const recommendedRangeHigh = indicatedPriceRangeHigh;
+  // Recommended range = computed range (user-provided or derived, no fabrication)
+  const recommendedRangeLow = minPrice;
+  const recommendedRangeHigh = maxPrice;
   
   // BUG FIX #1: Add down-round alert to warnings
   if (recommendedRow.isDownRound && lastPrivateRoundPrice) {
