@@ -27,6 +27,12 @@ interface ThreeStatementAssumptions {
   historicalEquity: number;
   historicalSharesOutstanding: number;
   historicalPPE: number;
+  // Additional balance sheet items
+  historicalIntangibles?: number;
+  historicalGoodwill?: number;
+  historicalOtherLTAssets?: number;
+  historicalDeferredTaxLiability?: number;
+  historicalOtherLTLiabilities?: number;
 
   // Revenue Assumptions
   revenueGrowthRates: number[];
@@ -351,6 +357,11 @@ Return a JSON object with EXACTLY these fields (all numbers, no strings except c
   "historicalEquity": number in millions,
   "historicalSharesOutstanding": number in millions,
   "historicalPPE": number in millions (estimate at 50% of assets if not given),
+  "historicalIntangibles": number in millions (0 if not specified),
+  "historicalGoodwill": number in millions (0 if not specified),
+  "historicalOtherLTAssets": number in millions (0 if not specified),
+  "historicalDeferredTaxLiability": number in millions (0 if not specified),
+  "historicalOtherLTLiabilities": number in millions (0 if not specified),
   
   "revenueGrowthRates": array of 5 decimals for Y1-Y5 growth (e.g., [0.08, 0.10, 0.06, 0.06, 0.06]),
   
@@ -789,14 +800,28 @@ export function calculateThreeStatementModel(
   const totalCurrentAssets: number[] = cash.map((c, i) => 
     c + arBalance[i] + inventoryBalance[i] + prepaidBalance[i] + otherCABalance[i]
   );
-  const intangibleAssets: number[] = new Array(years + 1).fill(0);
-  const goodwill: number[] = new Array(years + 1).fill(0);
-  const otherLongTermAssets: number[] = new Array(years + 1).fill(0);
+  
+  // FIX: Use historical values from assumptions instead of zeros
+  const histIntangibles = assumptions.historicalIntangibles ?? 0;
+  const histGoodwill = assumptions.historicalGoodwill ?? 0;
+  const histOtherLTAssets = assumptions.historicalOtherLTAssets ?? 0;
+  
+  // Intangibles: Keep constant (or amortize if desired - for now keep constant)
+  const intangibleAssets: number[] = new Array(years + 1).fill(histIntangibles);
+  // Goodwill: Keep constant (no impairment assumed)
+  const goodwill: number[] = new Array(years + 1).fill(histGoodwill);
+  // Other LT Assets: Keep constant
+  const otherLongTermAssets: number[] = new Array(years + 1).fill(histOtherLTAssets);
+  
   const totalNonCurrentAssets: number[] = ppeNet.map((ppe, i) => 
     ppe + intangibleAssets[i] + goodwill[i] + otherLongTermAssets[i]
   );
   const totalAssets: number[] = totalCurrentAssets.map((ca, i) => ca + totalNonCurrentAssets[i]);
 
+  // FIX: Use historical values from assumptions for liabilities
+  const histDeferredTaxLiab = assumptions.historicalDeferredTaxLiability ?? 0;
+  const histOtherLTLiab = assumptions.historicalOtherLTLiabilities ?? 0;
+  
   const deferredRevenue: number[] = new Array(years + 1).fill(0);
   const currentPortionDebt: number[] = termDebtAmortization.map((a, i) => 
     i < years ? termDebtAmortization[i + 1] : 0
@@ -805,8 +830,9 @@ export function calculateThreeStatementModel(
     ap + accruedBalance[i] + deferredRevenue[i] + currentPortionDebt[i] + revolverEnding[i] + otherCLBalance[i]
   );
   const longTermDebt: number[] = termDebtEnding.map((d, i) => Math.max(0, d - currentPortionDebt[i]));
-  const deferredTaxLiabilities: number[] = new Array(years + 1).fill(0);
-  const otherLongTermLiabilities: number[] = new Array(years + 1).fill(0);
+  // Use historical values for deferred tax and other LT liabilities
+  const deferredTaxLiabilities: number[] = new Array(years + 1).fill(histDeferredTaxLiab);
+  const otherLongTermLiabilities: number[] = new Array(years + 1).fill(histOtherLTLiab);
   const totalNonCurrentLiabilities: number[] = longTermDebt.map((ltd, i) => 
     ltd + deferredTaxLiabilities[i] + otherLongTermLiabilities[i]
   );
@@ -1885,6 +1911,204 @@ export async function generateThreeStatementExcel(
     chartsSheet.getCell(row, col + 2).value = val;
     chartsSheet.getCell(row, col + 2).numFmt = percentFormat;
   });
+
+  // ============ TAB 12: DEPRECIATION SCHEDULE ============
+  const deprSheet = workbook.addWorksheet('Depreciation_Schedule');
+  deprSheet.columns = [{ width: 35 }, ...Array(years + 1).fill({ width: 14 })];
+
+  row = 1;
+  deprSheet.getCell(row, 1).value = 'DEPRECIATION & AMORTIZATION SCHEDULE';
+  deprSheet.getCell(row, 1).font = { bold: true, size: 14 };
+  row++;
+  deprSheet.getCell(row, 1).value = '($ in millions)';
+  row += 2;
+
+  ppeSchedule.years.forEach((y, col) => {
+    deprSheet.getCell(row, col + 2).value = y;
+    deprSheet.getCell(row, col + 2).font = { bold: true };
+  });
+  row++;
+
+  const addDeprRow = (label: string, data: number[], format: string, indent: number = 0, bold: boolean = false) => {
+    deprSheet.getCell(row, 1).value = '  '.repeat(indent) + label;
+    if (bold) deprSheet.getCell(row, 1).font = { bold: true };
+    data.forEach((val, col) => {
+      deprSheet.getCell(row, col + 2).value = val;
+      deprSheet.getCell(row, col + 2).numFmt = format;
+      if (bold) deprSheet.getCell(row, col + 2).font = { bold: true };
+    });
+    row++;
+  };
+
+  addDeprRow('DEPRECIATION', [], '', 0, true);
+  addDeprRow('Beginning PP&E (Gross)', ppeSchedule.beginningPPE.map((p, i) => p + (i > 0 ? ppeSchedule.depreciation.slice(0, i).reduce((a, b) => a + b, 0) : 0)), currencyFormat, 1);
+  addDeprRow('CapEx Additions', ppeSchedule.capex, currencyFormat, 1);
+  addDeprRow('Depreciation Expense', ppeSchedule.depreciation.map(d => -d), currencyFormat, 1);
+  addDeprRow('Ending PP&E (Net)', ppeSchedule.endingPPE, currencyFormat, 0, true);
+  row++;
+
+  addDeprRow('DEPRECIATION ANALYSIS', [], '', 0, true);
+  addDeprRow('D&A % of Revenue', incomeStatement.da.map((d, i) => incomeStatement.revenue[i] > 0 ? d / incomeStatement.revenue[i] : 0), percentFormat, 1);
+  addDeprRow('D&A % of Beginning PP&E', ppeSchedule.depreciation.map((d, i) => ppeSchedule.beginningPPE[i] > 0 ? d / ppeSchedule.beginningPPE[i] : 0), percentFormat, 1);
+  row++;
+
+  addDeprRow('USEFUL LIFE ANALYSIS', [], '', 0, true);
+  addDeprRow('Implied Useful Life (Years)', ppeSchedule.endingPPE.map((e, i) => ppeSchedule.depreciation[i] > 0 ? e / ppeSchedule.depreciation[i] : 0), ratioFormat, 1);
+
+  // ============ TAB 13: SENSITIVITY ANALYSIS ============
+  const sensSheet = workbook.addWorksheet('Sensitivity_Analysis');
+  sensSheet.columns = [{ width: 25 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }];
+
+  row = 1;
+  sensSheet.getCell(row, 1).value = 'SENSITIVITY ANALYSIS';
+  sensSheet.getCell(row, 1).font = { bold: true, size: 14 };
+  row++;
+  sensSheet.getCell(row, 1).value = 'Key driver sensitivities on Year 5 metrics';
+  row += 2;
+
+  // Revenue Growth Sensitivity
+  sensSheet.getCell(row, 1).value = 'REVENUE GROWTH SENSITIVITY';
+  sensSheet.getCell(row, 1).font = { bold: true };
+  sensSheet.getRow(row).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+  row++;
+
+  const baseRevGrowth = assumptions.revenueGrowthRates[years - 1] || 0.05;
+  const revGrowthDeltas = [-0.03, -0.015, 0, 0.015, 0.03];
+  
+  sensSheet.getCell(row, 1).value = 'Growth Rate Δ';
+  revGrowthDeltas.forEach((delta, col) => {
+    sensSheet.getCell(row, col + 2).value = delta;
+    sensSheet.getCell(row, col + 2).numFmt = '+0.0%;-0.0%';
+    sensSheet.getCell(row, col + 2).font = { bold: true };
+  });
+  row++;
+
+  sensSheet.getCell(row, 1).value = 'Implied Growth Rate';
+  revGrowthDeltas.forEach((delta, col) => {
+    sensSheet.getCell(row, col + 2).value = baseRevGrowth + delta;
+    sensSheet.getCell(row, col + 2).numFmt = percentFormat;
+  });
+  row++;
+
+  // Year 5 Revenue impact (simplified sensitivity)
+  const baseY5Rev = incomeStatement.revenue[years];
+  sensSheet.getCell(row, 1).value = 'Year 5 Revenue ($M)';
+  revGrowthDeltas.forEach((delta, col) => {
+    const multiplier = (1 + baseRevGrowth + delta) / (1 + baseRevGrowth);
+    sensSheet.getCell(row, col + 2).value = baseY5Rev * multiplier;
+    sensSheet.getCell(row, col + 2).numFmt = currencyFormat;
+    if (delta === 0) {
+      sensSheet.getCell(row, col + 2).font = { bold: true, color: { argb: 'FF0000FF' } };
+    }
+  });
+  row += 2;
+
+  // Margin Sensitivity
+  sensSheet.getCell(row, 1).value = 'EBITDA MARGIN SENSITIVITY';
+  sensSheet.getCell(row, 1).font = { bold: true };
+  sensSheet.getRow(row).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+  row++;
+
+  const baseEBITDAMargin = incomeStatement.ebitdaMargin[years];
+  const marginDeltas = [-0.03, -0.015, 0, 0.015, 0.03];
+
+  sensSheet.getCell(row, 1).value = 'Margin Δ';
+  marginDeltas.forEach((delta, col) => {
+    sensSheet.getCell(row, col + 2).value = delta;
+    sensSheet.getCell(row, col + 2).numFmt = '+0.0%;-0.0%';
+    sensSheet.getCell(row, col + 2).font = { bold: true };
+  });
+  row++;
+
+  sensSheet.getCell(row, 1).value = 'Implied EBITDA Margin';
+  marginDeltas.forEach((delta, col) => {
+    sensSheet.getCell(row, col + 2).value = baseEBITDAMargin + delta;
+    sensSheet.getCell(row, col + 2).numFmt = percentFormat;
+  });
+  row++;
+
+  const baseY5EBITDA = incomeStatement.ebitda[years];
+  sensSheet.getCell(row, 1).value = 'Year 5 EBITDA ($M)';
+  marginDeltas.forEach((delta, col) => {
+    const adjustedMargin = baseEBITDAMargin + delta;
+    const impliedEBITDA = baseY5Rev * adjustedMargin;
+    sensSheet.getCell(row, col + 2).value = impliedEBITDA;
+    sensSheet.getCell(row, col + 2).numFmt = currencyFormat;
+    if (delta === 0) {
+      sensSheet.getCell(row, col + 2).font = { bold: true, color: { argb: 'FF0000FF' } };
+    }
+  });
+  row += 2;
+
+  // Net Income Sensitivity to Tax Rate
+  sensSheet.getCell(row, 1).value = 'TAX RATE SENSITIVITY';
+  sensSheet.getCell(row, 1).font = { bold: true };
+  sensSheet.getRow(row).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+  row++;
+
+  const baseTaxRate = assumptions.effectiveTaxRate;
+  const taxRateScenarios = [baseTaxRate - 0.05, baseTaxRate - 0.025, baseTaxRate, baseTaxRate + 0.025, baseTaxRate + 0.05];
+
+  sensSheet.getCell(row, 1).value = 'Effective Tax Rate';
+  taxRateScenarios.forEach((rate, col) => {
+    sensSheet.getCell(row, col + 2).value = rate;
+    sensSheet.getCell(row, col + 2).numFmt = percentFormat;
+    sensSheet.getCell(row, col + 2).font = { bold: true };
+  });
+  row++;
+
+  const baseEBT = incomeStatement.ebt[years];
+  sensSheet.getCell(row, 1).value = 'Year 5 Net Income ($M)';
+  taxRateScenarios.forEach((rate, col) => {
+    const impliedNI = baseEBT * (1 - rate);
+    sensSheet.getCell(row, col + 2).value = impliedNI;
+    sensSheet.getCell(row, col + 2).numFmt = currencyFormat;
+    if (rate === baseTaxRate) {
+      sensSheet.getCell(row, col + 2).font = { bold: true, color: { argb: 'FF0000FF' } };
+    }
+  });
+  row += 2;
+
+  // Base Case Inputs Summary
+  sensSheet.getCell(row, 1).value = 'BASE CASE INPUTS';
+  sensSheet.getCell(row, 1).font = { bold: true };
+  sensSheet.getRow(row).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+  row++;
+
+  sensSheet.getCell(row, 1).value = 'Revenue Growth Rate (Y5)';
+  sensSheet.getCell(row, 2).value = baseRevGrowth;
+  sensSheet.getCell(row, 2).numFmt = percentFormat;
+  sensSheet.getCell(row, 2).font = { color: { argb: 'FF0000FF' } };
+  row++;
+
+  sensSheet.getCell(row, 1).value = 'Target Gross Margin';
+  sensSheet.getCell(row, 2).value = assumptions.targetGrossMargin;
+  sensSheet.getCell(row, 2).numFmt = percentFormat;
+  sensSheet.getCell(row, 2).font = { color: { argb: 'FF0000FF' } };
+  row++;
+
+  sensSheet.getCell(row, 1).value = 'Effective Tax Rate';
+  sensSheet.getCell(row, 2).value = assumptions.effectiveTaxRate;
+  sensSheet.getCell(row, 2).numFmt = percentFormat;
+  sensSheet.getCell(row, 2).font = { color: { argb: 'FF0000FF' } };
+  row++;
+
+  sensSheet.getCell(row, 1).value = 'D&A % of Revenue';
+  sensSheet.getCell(row, 2).value = assumptions.daPercent;
+  sensSheet.getCell(row, 2).numFmt = percentFormat;
+  sensSheet.getCell(row, 2).font = { color: { argb: 'FF0000FF' } };
+  row++;
+
+  // Note about sensitivity analysis
+  row += 2;
+  sensSheet.getCell(row, 1).value = 'Note: Base case values shown in blue.';
+  sensSheet.getCell(row, 1).font = { italic: true, size: 10 };
+  row++;
+  sensSheet.getCell(row, 1).value = 'These sensitivities show the impact on Year 5 metrics';
+  sensSheet.getCell(row, 1).font = { italic: true, size: 10 };
+  row++;
+  sensSheet.getCell(row, 1).value = 'assuming all other drivers remain at base case.';
+  sensSheet.getCell(row, 1).font = { italic: true, size: 10 };
 
   // Return workbook as buffer
   const buffer = await workbook.xlsx.writeBuffer();
