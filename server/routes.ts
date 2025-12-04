@@ -18,6 +18,7 @@ import { parseLBODescription, calculateLBOReturns, generateLBOExcel } from "./se
 import { parseMADescription, calculateMAMetrics, generateMAExcel } from "./services/maModelService";
 import { parseThreeStatementDescription, calculateThreeStatementModel, generateThreeStatementExcel } from "./services/threeStatementModelService";
 import { parseRegressionDescription, generateRegressionPythonCode } from "./services/regressionModelService";
+import { parseForecastingDescription, generateForecastingPythonCode } from "./services/forecastingModelService";
 
 
 // Configure multer for file uploads
@@ -3668,6 +3669,76 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
 
     } catch (error: any) {
       console.error("ML model download error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to generate Python file"
+      });
+    }
+  });
+
+  // Data Science Panel - Parse Statistical Forecasting description
+  app.post("/api/datascience/parse-forecasting", async (req: Request, res: Response) => {
+    try {
+      const { description, customInstructions, llmProvider } = req.body;
+
+      if (!description) {
+        return res.status(400).json({
+          success: false,
+          message: "Forecasting description is required"
+        });
+      }
+
+      // Parse the description to extract forecasting parameters
+      const { parameters, providerUsed } = await parseForecastingDescription(
+        description,
+        customInstructions || '',
+        llmProvider || 'grok'
+      );
+
+      // Generate Python code for the forecasting model
+      const pythonCode = generateForecastingPythonCode(parameters);
+
+      res.json({
+        success: true,
+        parameters,
+        pythonCode,
+        providerUsed,
+        message: "Forecasting model specification generated successfully"
+      });
+
+    } catch (error: any) {
+      console.error("Forecasting parsing error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to parse forecasting description"
+      });
+    }
+  });
+
+  // Data Science Panel - Download Forecasting Model Python file
+  app.post("/api/datascience/download-forecasting", async (req: Request, res: Response) => {
+    try {
+      const { pythonCode, parameters } = req.body;
+
+      if (!pythonCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Python code is required"
+        });
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15);
+      const modelType = parameters?.modelType || 'forecast';
+      const frequency = parameters?.frequency || 'timeseries';
+      const filename = `forecast_${modelType}_${frequency}_${timestamp}.py`;
+
+      res.setHeader('Content-Type', 'text/x-python');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Length', Buffer.byteLength(pythonCode));
+      res.send(pythonCode);
+
+    } catch (error: any) {
+      console.error("Forecasting model download error:", error);
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Python file"

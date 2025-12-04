@@ -829,10 +829,12 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           endpoint = "/api/datascience/parse-ml";
           break;
         case "forecasting":
+          endpoint = "/api/datascience/parse-forecasting";
+          break;
         case "predictive":
           toast({
             title: "Coming Soon",
-            description: `${modelType.charAt(0).toUpperCase() + modelType.slice(1)} models are under development`,
+            description: "Predictive Analytics models are under development",
           });
           setDataScienceLoading(false);
           return;
@@ -885,7 +887,18 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
     try {
       const isML = dataScienceResult.parameters?.problemType && ['classification', 'clustering', 'dimensionality_reduction'].includes(dataScienceResult.parameters.problemType);
-      const downloadEndpoint = isML ? "/api/datascience/download-ml" : "/api/datascience/download-regression";
+      const isForecasting = dataScienceResult.parameters?.modelType && ['arima', 'sarima', 'sarimax', 'holtwinters', 'ets', 'prophet', 'auto'].includes(dataScienceResult.parameters.modelType.toLowerCase());
+      
+      let downloadEndpoint = "/api/datascience/download-regression";
+      let defaultFilename = "regression_model.py";
+      
+      if (isForecasting) {
+        downloadEndpoint = "/api/datascience/download-forecasting";
+        defaultFilename = "forecasting_model.py";
+      } else if (isML) {
+        downloadEndpoint = "/api/datascience/download-ml";
+        defaultFilename = "ml_model.py";
+      }
       
       const response = await fetch(downloadEndpoint, {
         method: "POST",
@@ -903,7 +916,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       const blob = await response.blob();
       const contentDisposition = response.headers.get("Content-Disposition");
       const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
-      const defaultFilename = isML ? "ml_model.py" : "regression_model.py";
       const filename = filenameMatch ? filenameMatch[1] : defaultFilename;
 
       const url = window.URL.createObjectURL(blob);
@@ -4043,13 +4055,17 @@ Examples:
 
             <Button
               onClick={() => handleDataScienceProcess("forecasting")}
-              disabled={true}
-              className="h-24 bg-gradient-to-br from-gray-400 to-gray-500 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg opacity-60 cursor-not-allowed"
+              disabled={dataScienceLoading || !dataScienceInputText.trim()}
+              className="h-24 bg-gradient-to-br from-teal-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800 text-white flex flex-col items-center justify-center gap-2 rounded-lg shadow-lg"
               data-testid="button-datascience-forecasting"
             >
-              <LineChart className="h-6 w-6" />
+              {dataScienceLoading && dataScienceModelType === "forecasting" ? (
+                <Loader2 className="h-6 w-6 animate-spin" />
+              ) : (
+                <LineChart className="h-6 w-6" />
+              )}
               <span className="font-bold text-lg">Statistical Forecasting</span>
-              <span className="text-xs opacity-80">Coming Soon</span>
+              <span className="text-xs opacity-80">ARIMA, Holt-Winters, Prophet</span>
             </Button>
 
             <Button
@@ -4065,19 +4081,34 @@ Examples:
           </div>
 
           {/* Results Display */}
-          {dataScienceResult && dataScienceResult.success && (
+          {dataScienceResult && dataScienceResult.success && (() => {
+            // Reliable forecasting detection: check modelType state OR forecasting-specific parameters
+            const isForecastingResult = dataScienceModelType === "forecasting" || 
+              dataScienceResult.parameters?.forecastHorizon !== undefined ||
+              ['arima', 'sarima', 'sarimax', 'holtwinters', 'prophet', 'auto'].includes(
+                dataScienceResult.parameters?.modelType?.toLowerCase() || ''
+              );
+            
+            return (
             <div className="mb-6 space-y-6">
               {/* Header with model info and download button */}
               <div className="flex items-center justify-between flex-wrap gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-violet-200 dark:border-violet-700">
                 <div>
                   <h3 className="text-xl font-bold text-violet-900 dark:text-violet-100">
-                    {dataScienceResult.parameters?.problemType 
-                      ? `${dataScienceResult.parameters.problemType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())} - ${dataScienceResult.parameters.modelType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Auto'} Model`
-                      : `${dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Regression'} Model Generated`
+                    {isForecastingResult 
+                      ? `Time Series Forecasting - ${dataScienceResult.parameters?.modelType?.toUpperCase() || 'Auto'} Model`
+                      : dataScienceResult.parameters?.problemType 
+                        ? `${dataScienceResult.parameters.problemType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())} - ${dataScienceResult.parameters.modelType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Auto'} Model`
+                        : `${dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Regression'} Model Generated`
                     }
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {dataScienceResult.parameters?.targetVariable && `Target: ${dataScienceResult.parameters.targetVariable} | `}
+                    {isForecastingResult 
+                      ? `Forecast: ${dataScienceResult.parameters?.forecastHorizon || 12} periods | Frequency: ${dataScienceResult.parameters?.frequency || 'Monthly'} | `
+                      : dataScienceResult.parameters?.targetVariable 
+                        ? `Target: ${dataScienceResult.parameters.targetVariable} | `
+                        : ''
+                    }
                     {dataScienceResult.parameters?.featureVariables?.length > 0 && `Features: ${dataScienceResult.parameters.featureVariables.slice(0, 3).join(', ')}${dataScienceResult.parameters.featureVariables.length > 3 ? '...' : ''} | `}
                     Analysis by {dataScienceResult.providerUsed}
                   </p>
@@ -4097,49 +4128,73 @@ Examples:
                 </Button>
               </div>
 
-              {/* Model Parameters Summary - Adaptive for both Regression and ML */}
+              {/* Model Parameters Summary - Adaptive for Regression, ML, and Forecasting */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-center">
                   <p className="text-sm text-violet-600 dark:text-violet-400">
-                    {dataScienceResult.parameters?.problemType ? 'Problem Type' : 'Regression Type'}
+                    {isForecastingResult 
+                      ? 'Model Type'
+                      : dataScienceResult.parameters?.problemType 
+                        ? 'Problem Type' 
+                        : 'Regression Type'}
                   </p>
                   <p className="text-lg font-bold text-violet-900 dark:text-violet-100">
-                    {dataScienceResult.parameters?.problemType 
-                      ? dataScienceResult.parameters.problemType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-                      : dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                    {isForecastingResult 
+                      ? dataScienceResult.parameters?.modelType?.toUpperCase() || 'Auto'
+                      : dataScienceResult.parameters?.problemType 
+                        ? dataScienceResult.parameters.problemType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                        : dataScienceResult.parameters?.regressionType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Regression'
                     }
                   </p>
                 </div>
                 <div className="p-4 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-center">
                   <p className="text-sm text-purple-600 dark:text-purple-400">
-                    {dataScienceResult.parameters?.problemType ? 'Model Type' : 'Test Size'}
+                    {isForecastingResult 
+                      ? 'Forecast Horizon'
+                      : dataScienceResult.parameters?.problemType 
+                        ? 'Model Type' 
+                        : 'Test Size'}
                   </p>
                   <p className="text-lg font-bold text-purple-900 dark:text-purple-100">
-                    {dataScienceResult.parameters?.problemType 
-                      ? (dataScienceResult.parameters.modelType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Auto')
-                      : `${((dataScienceResult.parameters?.testSize || 0.2) * 100).toFixed(0)}%`
+                    {isForecastingResult 
+                      ? `${dataScienceResult.parameters?.forecastHorizon || 12} periods`
+                      : dataScienceResult.parameters?.problemType 
+                        ? (dataScienceResult.parameters.modelType?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Auto')
+                        : `${((dataScienceResult.parameters?.testSize || 0.2) * 100).toFixed(0)}%`
                     }
                   </p>
                 </div>
                 <div className="p-4 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg text-center">
                   <p className="text-sm text-indigo-600 dark:text-indigo-400">
-                    {dataScienceResult.parameters?.problemType === 'clustering' ? 'Clusters' : 'CV Folds'}
+                    {isForecastingResult 
+                      ? 'Seasonal Period'
+                      : dataScienceResult.parameters?.problemType === 'clustering' 
+                        ? 'Clusters' 
+                        : 'CV Folds'}
                   </p>
                   <p className="text-lg font-bold text-indigo-900 dark:text-indigo-100">
-                    {dataScienceResult.parameters?.problemType === 'clustering'
-                      ? (dataScienceResult.parameters.nClusters || 'Auto')
-                      : (dataScienceResult.parameters?.cvFolds || dataScienceResult.parameters?.crossValidationFolds || 5)
+                    {isForecastingResult 
+                      ? dataScienceResult.parameters?.seasonalPeriod || 12
+                      : dataScienceResult.parameters?.problemType === 'clustering'
+                        ? (dataScienceResult.parameters.nClusters || 'Auto')
+                        : (dataScienceResult.parameters?.cvFolds || dataScienceResult.parameters?.crossValidationFolds || 5)
                     }
                   </p>
                 </div>
                 <div className="p-4 bg-fuchsia-100 dark:bg-fuchsia-900/30 rounded-lg text-center">
                   <p className="text-sm text-fuchsia-600 dark:text-fuchsia-400">
-                    {dataScienceResult.parameters?.problemType ? 'Tuning' : 'Feature Scaling'}
+                    {isForecastingResult 
+                      ? 'Confidence Level'
+                      : dataScienceResult.parameters?.problemType 
+                        ? 'Tuning' 
+                        : 'Feature Scaling'}
                   </p>
                   <p className="text-lg font-bold text-fuchsia-900 dark:text-fuchsia-100">
-                    {dataScienceResult.parameters?.problemType 
-                      ? (dataScienceResult.parameters.hyperparameterTuning?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Random')
-                      : (dataScienceResult.parameters?.scaleFeatures ? 'Enabled' : 'Disabled')
+                    {isForecastingResult 
+                      ? `${((dataScienceResult.parameters?.confidenceLevel || 0.95) * 100).toFixed(0)}%`
+                      : dataScienceResult.parameters?.problemType 
+                        ? (dataScienceResult.parameters.hyperparameterTuning?.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Random')
+                        : (dataScienceResult.parameters?.scaleFeatures ? 'Enabled' : 'Disabled')
                     }
                   </p>
                 </div>
@@ -4186,7 +4241,8 @@ Examples:
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Clear All Button */}
           <div className="mt-4 text-center">
