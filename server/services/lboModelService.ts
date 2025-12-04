@@ -21,7 +21,8 @@ export interface LBOAssumptions {
   purchasePrice: number;
   entryMultiple: number;
   transactionCosts: number;
-  financingFees: number;
+  financingFees: number; // As percentage of debt (e.g., 0.01 = 1%)
+  financingFeesExplicit?: number; // Explicit dollar amount in millions (overrides percentage if provided)
   managementRollover: number;
   
   // Financing Structure
@@ -64,7 +65,8 @@ Return a JSON object with the following structure:
   "purchasePrice": number (in millions),
   "entryMultiple": number (e.g., 10.5 for 10.5x EBITDA),
   "transactionCosts": number (as decimal, e.g., 0.02 for 2% of purchase price),
-  "financingFees": number (as decimal, e.g., 0.01 for 1% of total debt),
+  "financingFees": number (as decimal, default 0.01 for 1% of total debt - only use if no explicit amount given),
+  "financingFeesExplicit": number or null (EXPLICIT dollar amount in millions if user states a specific fee like "$5M financing fees" - this OVERRIDES the percentage),
   "managementRollover": number (in millions),
   
   "seniorDebtAmount": number (in millions),
@@ -222,6 +224,7 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
     entryMultiple,
     transactionCosts,
     financingFees = 0.01,
+    financingFeesExplicit,
     managementRollover,
     seniorDebtAmount,
     seniorDebtRate,
@@ -239,7 +242,15 @@ export function calculateLBOReturns(assumptions: LBOAssumptions) {
   // Uses: Purchase Price + Transaction Costs + Financing Fees
   const transactionCostsAmount = purchasePrice * transactionCosts;
   const totalDebt = seniorDebtAmount + subDebtAmount;
-  const financingFeesAmount = totalDebt * financingFees;
+  
+  // FINANCING FEES: Use explicit dollar amount if provided, otherwise calculate from percentage
+  // If user says "$5M financing fees", use 5. Otherwise, use financingFees * totalDebt.
+  const financingFeesAmount = (financingFeesExplicit !== undefined && financingFeesExplicit !== null && financingFeesExplicit > 0)
+    ? financingFeesExplicit
+    : totalDebt * financingFees;
+  
+  console.log(`[LBO Model] Financing Fees: Explicit=${financingFeesExplicit ?? 'not provided'}M, Percentage=${(financingFees * 100).toFixed(1)}%, Using=${financingFeesAmount.toFixed(2)}M`);
+  
   const totalUses = purchasePrice + transactionCostsAmount + financingFeesAmount;
   
   // Sources: Debt + Management Rollover + Sponsor Equity (balancing item)
