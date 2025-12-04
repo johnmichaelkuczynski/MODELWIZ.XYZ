@@ -953,6 +953,28 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setDataScienceResult(null);
   };
 
+  // Global Clear All Handler - clears Finance and Data Science panels
+  const handleGlobalClearAll = () => {
+    // Clear Finance Panel
+    setFinanceInputText("");
+    setFinanceCustomInstructions("");
+    setFinanceModelType(null);
+    setFinanceResult(null);
+    setShowFinanceCustomization(false);
+    setFinanceLoadingPhase("");
+    
+    // Clear Data Science Panel
+    setDataScienceInputText("");
+    setDataScienceCustomInstructions("");
+    setDataScienceModelType(null);
+    setDataScienceResult(null);
+    
+    toast({
+      title: "All Cleared",
+      description: "Finance and Data Science panels have been reset",
+    });
+  };
+
   // Coherence Meter Handlers
   const createCoherenceChunks = (text: string) => {
     const words = text.trim().split(/\s+/);
@@ -2663,6 +2685,20 @@ Generated on: ${new Date().toLocaleString()}`;
             <p className="text-sm text-gray-600 dark:text-gray-400">
               DCF valuation, LBO analysis, M&A modeling, and integrated 3-statement models
             </p>
+            {/* Clear All Button */}
+            <div className="mt-4">
+              <Button
+                onClick={handleFinanceClear}
+                variant="outline"
+                size="sm"
+                className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                disabled={financeLoading}
+                data-testid="button-finance-clear"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear Finance Panel
+              </Button>
+            </div>
           </div>
 
           {/* Input Area */}
@@ -3925,7 +3961,7 @@ Generated on: ${new Date().toLocaleString()}`;
             </div>
           )}
 
-          {/* Clear All Button */}
+          {/* Clear Finance Panel Button */}
           <div className="mt-4 text-center">
             <Button
               onClick={handleFinanceClear}
@@ -3935,7 +3971,7 @@ Generated on: ${new Date().toLocaleString()}`;
               data-testid="button-finance-clear-all"
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Clear All
+              Clear Finance
             </Button>
           </div>
         </div>
@@ -3955,6 +3991,20 @@ Generated on: ${new Date().toLocaleString()}`;
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Describe your problem in natural language - get complete, executable code with data preprocessing, model training, evaluation, and visualization
             </p>
+            {/* Clear All Button */}
+            <div className="mt-4">
+              <Button
+                onClick={handleDataScienceClear}
+                variant="outline"
+                size="sm"
+                className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                disabled={dataScienceLoading}
+                data-testid="button-datascience-clear"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear Data Science Panel
+              </Button>
+            </div>
           </div>
 
           {/* LLM Provider Selection */}
@@ -4277,7 +4327,7 @@ Examples:
             );
           })()}
 
-          {/* Clear All Button */}
+          {/* Clear Data Science Panel Button */}
           <div className="mt-4 text-center">
             <Button
               onClick={handleDataScienceClear}
@@ -4287,9 +4337,32 @@ Examples:
               data-testid="button-datascience-clear-all"
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Clear All
+              Clear Data Science
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* GLOBAL CLEAR ALL - Clear Finance & Data Science Panels */}
+      <div className="mt-8 mb-8 text-center">
+        <div className="inline-flex flex-col items-center gap-3 p-6 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/10 dark:to-orange-900/10 rounded-lg border-2 border-red-200 dark:border-red-700">
+          <h3 className="text-lg font-semibold text-red-800 dark:text-red-200">
+            Reset All Panels
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 max-w-md">
+            Clear all inputs and results from both Finance and Data Science panels
+          </p>
+          <Button
+            onClick={handleGlobalClearAll}
+            variant="destructive"
+            size="lg"
+            className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white"
+            disabled={financeLoading || dataScienceLoading}
+            data-testid="button-global-clear-all"
+          >
+            <Trash2 className="h-5 w-5 mr-2" />
+            Clear All Panels
+          </Button>
         </div>
       </div>
 
