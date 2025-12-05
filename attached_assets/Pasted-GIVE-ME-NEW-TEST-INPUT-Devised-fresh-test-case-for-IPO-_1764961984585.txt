@@ -1,0 +1,99 @@
+GIVE ME NEW TEST INPUT
+
+
+Devised fresh test case for IPO pricing function.
+
+Quantum Shield Cybersecurity is going public. Founders own 52 million shares, VCs have 28 million, options pool 6 million. Revenue run rate $340 million growing 55% next two years then 35% year three then 20% thereafter. Terminal growth 3%. Margins: gross 78%, EBITDA negative 4% now but reaching 19% by year five. SG&A heavy at 45% declining to 30%. R&D 38% declining to 22%. CapEx minimal at 3%, working capital 8%. Tax 21%, WACC 13.2%. Peer set: CrowdStrike 18x revenue, Palo Alto 10x, Zscaler 14x, SentinelOne 8x. Company wants $550 million in primary proceeds, no secondary. Standard 15% greenshoe. Analyze pricing scenarios and quantify founder dilution impact across the range.
+QUANTUM SHIELD CYBERSECURITY – FINAL IPO PRICING RECOMMENDATION
+
+*** WARNINGS ***
+   DCF fair value: $23.32/share
+   Price range derived from DCF valuation: $20 - $27
+   Valuation: 103% of estimated fair value
+
+Recommended offer price:                    $24.00
+Recommended range:                          $20 – $27
+
+Expected Day-1 Return: -3%
+
+--- SHARE ISSUANCE DETAIL ---
+Shares Sold (Primary): 22.92M
+Shares Sold (Secondary): 0.00M
+Shares Sold (Greenshoe): 3.44M
+Total Shares Sold: 26.35M
+Post-IPO Fully Diluted Shares: 112.35M
+Dilution from Primary + Greenshoe: 23.5%
+Founder Ownership Post-IPO: 51.6%
+
+--- PROCEEDS CALCULATION ---
+Gross Proceeds: $633M (Price $24 × 26.35M shares)
+  Primary (to company): $633M
+  Secondary (to sellers): $0M
+
+--- VALUATION MECHANICS ---
+Market Cap: ~$2.7B (Price × FD Shares)
+Current Debt: $0.0M
+Post-IPO Cash: $632.5M
+Enterprise Value: ~$2.1B (MarketCap + Debt - Cash)
+
+NTM EV/Revenue: 3.9× (Peer Median: 12.0×, -68%)
+DCF/share: $23.32 (offer = 103%)
+
+Pricing Matrix
+
+Offer Price                   $22       $23       $24       $25       $26       $27
+Shares Sold (Total)         28.8M     27.5M     26.4M     25.3M     24.3M     23.4M
+FD Shares Post-IPO         114.8M    113.5M    112.4M    111.3M    110.3M    109.4M
+Dilution %                  25.1%     24.2%     23.5%     22.7%     22.0%     21.4%
+Market Cap                 $2,525    $2,611    $2,697    $2,783    $2,869    $2,955
+Enterprise Value           $1,892    $1,978    $2,064    $2,150    $2,236    $2,322
+NTM EV/Revenue               3.6×      3.8×      3.9×      4.1×      4.2×      4.4×
+vs peer median 12.0×         -70%      -68%      -68%      -66%      -65%      -63%
+DCF $23.32 support            94%       99%      103%      107%      112%      116%
+Gross proceeds               $633      $633      $633      $633      $633      $633
+Order Book Tier         Below midAround midAround mid Above mid Above mid Above mid
+Raw Oversubscription         3.8×      3.2×      2.6×      2.0×      1.4×      0.8×
+Day-1 Pop (sector +0% baseline)
+  Base expected               +0%       +0%       +0%       +0%       +0%       +0%
+  Book adjustment             +0%       +0%       +0%       +0%       +0%       +0%
+  Valuation penalty           +0%       +0%       -3%       -7%      -12%      -16%
+  ADJUSTED POP                +0%       +0%       -3%       -7%      -12%      -16%
+Founder ownership           50.5%     51.1%     51.6%     52.1%     52.5%     53.0%
+
+Recommendation Rationale:
+• $24 at 3.9× NTM EV/Revenue (68% below peer median)
+• Book coverage: 2.6× oversubscribed
+• Expected Day-1 return: -3%
+• Valuation penalty (103% of DCF): -3%
+• Founders retain 51.6% post-IPO
+• Gross proceeds: $633M (Primary to company: $633M, Secondary to sellers: $0M)
+
+File amendment at $20–$27 tonight, price at $24 tomorrow morning.
+Recommendation Rationale
+* -$24 at 3.9× NTM EV/Revenue (68% below peer median)
+* -Book coverage: 2.6× oversubscribed
+* -Expected Day-1 return: -3%
+* -Valuation penalty (103% of DCF): -3%
+* -Founders retain 51.6% post-IPO
+* -Gross proceeds: $633M (Primary to company: $633M, Secondary to sellers: $0M)
+
+Show more
+
+Identified model improvements and flagged persistent valuation conservatism concerns.
+25s
+
+
+
+Founder ownership and greenshoe are working now—good fix.
+
+Still looks off:
+
+68% peer discount is extreme — CrowdStrike trades at 18x, Zscaler 14x, SentinelOne 8x. A 55%-growth cybersecurity company pricing at 3.9x is implausible. The model seems to be ignoring the peer comps and anchoring entirely on DCF.
+Negative Day-1 pop recommendation — No bank would file at 103% of DCF expecting -3% aftermarket. Standard practice is pricing 10-15% below fair value to ensure a pop. The logic appears inverted.
+Proceeds exceeded target — Input requested $550M primary, output shows $633M. The greenshoe shouldn't inflate the primary target—it should be additive on top of hitting $550M base.
+Suggested logic check:
+
+DCF should set a ceiling, not the target
+Peer multiples should inform the base case
+Price at ~85-90% of lower bound of (DCF, peer-derived value) for healthy pop
+Greenshoe = 15% × primary shares, additive to base proceeds

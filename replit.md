@@ -51,6 +51,20 @@ The application uses a monorepo structure, separating client and server.
         - **No Hardcoded Thresholds**: Removed all judgment thresholds (oversubscription 3/5/10, POP -0.10)
         - **No CEO Text Inference**: pricingAggressiveness and managementPriority must be explicitly provided
         - **Recommendation Logic**: Based purely on user's pricingAggressiveness and managementPriority
+        - **Peer-First Pricing with DCF Ceiling (December 2024)**:
+          - Peer multiples are the BASE CASE anchor (not DCF)
+          - DCF serves as CEILING only (caps peer if lower)
+          - Post-money equity calculation with iterative convergence (5 iterations, delta < $0.01)
+          - IPO discount: 87.5% of anchor for ~14% expected Day-1 pop
+        - **Greenshoe Exercise Flag (December 2024)**:
+          - `greenshoeAssumedExercised` boolean (default: true)
+          - When true: greenshoe included in dilution, proceeds, cash, EV
+          - When false: base primary only, no greenshoe in any metric
+          - Ensures internal consistency across all calculations
+        - **Greenshoe Proceeds Separation**:
+          - basePrimaryProceedsM: Exact target (e.g., $550M)
+          - greenshoeProceedsM: Additive on top (e.g., ~$82.5M for 15%)
+          - grossProceedsM = base + greenshoe + secondary
         - **Restaurant/Consumer Sector Support (December 2024)**: 
           - EV/EBITDA as primary valuation multiple (not EV/Revenue)
           - Hard guard prevents EV/Revenue fallback for restaurant/consumer sectors

@@ -13,6 +13,7 @@ export interface IPOAssumptions {
   secondarySharesOffered: number;
   greenshoeShares: number;
   greenshoePercent: number;
+  greenshoeAssumedExercised?: boolean; // Default true - standard for successful IPOs
   
   // Dollar-based inputs (alternative to share-based)
   primaryDollarRaiseM?: number; // Primary proceeds target in $M
@@ -473,8 +474,10 @@ interface PricingRow {
   
   fairValueSupport: number;
   grossProceedsM: number;
-  primaryProceedsM: number; // BUG FIX #7: proceeds to company
-  secondaryProceedsM: number; // BUG FIX #7: proceeds to sellers
+  basePrimaryProceedsM: number; // Exact target primary (e.g., $550M)
+  greenshoeProceedsM: number; // Additional from greenshoe (15% additive)
+  primaryProceedsM: number; // Total to company = basePrimary + greenshoe
+  secondaryProceedsM: number; // Proceeds to selling shareholders
   
   oversubscription: number;
   effectiveOversubscription: number; // BUG FIX #4: after price-sensitive drop-off
@@ -866,38 +869,113 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     maxPrice = indicatedPriceRangeHigh;
     priceRangeSource = "user-provided";
   } else {
-    // COMPUTE price range from other user inputs - no fabrication
-    // Priority: fair value (user or DCF) > dollar raise / shares > peer multiples
+    // === CORRECTED PRICING LOGIC ===
+    // Priority: Peer multiples = BASE CASE anchor, DCF = CEILING (not target)
+    // Price at 85-90% of fair value to ensure +10-15% Day-1 pop
     
-    let derivedMidpoint: number | null = null;
+    let peerDerivedPrice: number | null = null;
+    let dcfCeilingPrice: number | null = null;
+    let peerSource = "";
     
-    // Method 1: Use effective fair value (user-provided or DCF-computed)
-    if (effectiveFairValuePerShare > 0) {
-      derivedMidpoint = effectiveFairValuePerShare;
-      priceRangeSource = fairValuePerShare ? "derived from user-provided fair value" : "derived from DCF valuation";
+    // Step 1: Compute PEER-DERIVED price (this is the BASE CASE)
+    // For restaurant/consumer - use EV/EBITDA
+    // POST-MONEY EQUITY CALCULATION: Accounts for primary proceeds
+    // NOTE: Uses iterative convergence for circular dependency (price → shares → price)
+    if (useEVEBITDAValuation && peerMedianEVEBITDA && peerMedianEVEBITDA > 0 && 
+        assumptions.ntmEBITDA && assumptions.ntmEBITDA > 0 && sharesOutstandingPreIPO > 0) {
+      const impliedEV = assumptions.ntmEBITDA * peerMedianEVEBITDA;
+      const expectedPrimaryRaiseM = primaryDollarRaiseM || 0;
+      const impliedEquity = impliedEV - currentDebt + currentCash + expectedPrimaryRaiseM;
+      
+      // Iterative convergence for post-money price
+      const preMoneyEquity = impliedEV - currentDebt + currentCash;
+      let currentPrice = preMoneyEquity / sharesOutstandingPreIPO;
+      
+      // Iterate up to 5 times for convergence (typically converges in 2-3)
+      for (let i = 0; i < 5; i++) {
+        const estimatedPrimaryShares = expectedPrimaryRaiseM > 0 && currentPrice > 0 
+          ? expectedPrimaryRaiseM / currentPrice 
+          : 0;
+        const postIPOShares = sharesOutstandingPreIPO + estimatedPrimaryShares;
+        const newPrice = postIPOShares > 0 ? impliedEquity / postIPOShares : currentPrice;
+        if (Math.abs(newPrice - currentPrice) < 0.01) break; // Converged
+        currentPrice = newPrice;
+      }
+      
+      peerDerivedPrice = currentPrice;
+      peerSource = `peer EV/EBITDA ${peerMedianEVEBITDA.toFixed(1)}×`;
     }
-    // Method 2: Compute from dollar raise and shares outstanding
-    if (!derivedMidpoint && primaryDollarRaiseM && primaryDollarRaiseM > 0 && inputPrimaryShares && inputPrimaryShares > 0) {
-      // Implied price = target raise / shares offered
-      derivedMidpoint = primaryDollarRaiseM / inputPrimaryShares;
+    // For revenue companies - use EV/Revenue
+    // POST-MONEY EQUITY CALCULATION: Accounts for primary proceeds
+    // NOTE: Uses two-pass iteration for circular dependency (price → shares → price)
+    // This converges well for typical IPOs; large primary raises (>50% of market cap) may require manual adjustment
+    else if (!useEVEBITDAValuation && peerMedianEVRevenue > 0 && ntmRevenue > 0 && sharesOutstandingPreIPO > 0) {
+      const impliedEV = ntmRevenue * peerMedianEVRevenue;
+      const expectedPrimaryRaiseM = primaryDollarRaiseM || 0;
+      const impliedEquity = impliedEV - currentDebt + currentCash + expectedPrimaryRaiseM;
+      
+      // Iterative convergence for post-money price
+      const preMoneyEquity = impliedEV - currentDebt + currentCash;
+      let currentPrice = preMoneyEquity / sharesOutstandingPreIPO;
+      
+      // Iterate up to 5 times for convergence (typically converges in 2-3)
+      for (let i = 0; i < 5; i++) {
+        const estimatedPrimaryShares = expectedPrimaryRaiseM > 0 && currentPrice > 0 
+          ? expectedPrimaryRaiseM / currentPrice 
+          : 0;
+        const postIPOShares = sharesOutstandingPreIPO + estimatedPrimaryShares;
+        const newPrice = postIPOShares > 0 ? impliedEquity / postIPOShares : currentPrice;
+        if (Math.abs(newPrice - currentPrice) < 0.01) break; // Converged
+        currentPrice = newPrice;
+      }
+      
+      peerDerivedPrice = currentPrice;
+      peerSource = `peer EV/Revenue ${peerMedianEVRevenue.toFixed(1)}×`;
+    }
+    // For biotech - use EV/raNPV
+    else if (totalRaNPV > 0 && peerMedianEVRaNPV > 0 && sharesOutstandingPreIPO > 0) {
+      const impliedEV = totalRaNPV * peerMedianEVRaNPV;
+      peerDerivedPrice = impliedEV / sharesOutstandingPreIPO;
+      peerSource = `peer EV/raNPV ${peerMedianEVRaNPV.toFixed(1)}×`;
+    }
+    
+    // Step 2: Compute DCF CEILING (caps peer valuation, not the anchor)
+    if (effectiveFairValuePerShare > 0) {
+      dcfCeilingPrice = effectiveFairValuePerShare;
+    }
+    
+    // Step 3: Determine anchor price
+    // CORRECTED LOGIC: Peer multiples = base, DCF = ceiling
+    let anchorPrice: number | null = null;
+    
+    if (peerDerivedPrice !== null && peerDerivedPrice > 0) {
+      // Peer-derived is the base case
+      anchorPrice = peerDerivedPrice;
+      priceRangeSource = `derived from ${peerSource}`;
+      
+      // If DCF ceiling exists and is LOWER than peer, cap at DCF
+      if (dcfCeilingPrice !== null && dcfCeilingPrice > 0 && dcfCeilingPrice < peerDerivedPrice) {
+        anchorPrice = dcfCeilingPrice;
+        priceRangeSource = `derived from DCF ceiling (peer ${peerSource} exceeded DCF)`;
+        warnings.push(`Peer-derived price $${peerDerivedPrice.toFixed(2)} exceeded DCF ceiling $${dcfCeilingPrice.toFixed(2)} - using DCF as cap`);
+      }
+    } else if (dcfCeilingPrice !== null && dcfCeilingPrice > 0) {
+      // No peer data - fall back to DCF only
+      anchorPrice = dcfCeilingPrice;
+      priceRangeSource = "derived from DCF valuation (no peer data)";
+      warnings.push("No peer multiples provided - using DCF only (recommend providing peer comps)");
+    }
+    
+    // Step 4: Fallback to dollar raise / shares if no valuation data
+    if (anchorPrice === null && primaryDollarRaiseM && primaryDollarRaiseM > 0 && inputPrimaryShares && inputPrimaryShares > 0) {
+      anchorPrice = primaryDollarRaiseM / inputPrimaryShares;
       priceRangeSource = "derived from dollar raise / shares offered";
     }
-    // Method 3: For restaurant/consumer sectors - use peer EV/EBITDA multiple
-    // This is the PRIMARY valuation method for these sectors, NOT EV/Revenue
-    else if (!derivedMidpoint && useEVEBITDAValuation && peerMedianEVEBITDA && peerMedianEVEBITDA > 0 && 
-             assumptions.ntmEBITDA && assumptions.ntmEBITDA > 0 && sharesOutstandingPreIPO > 0) {
-      // Implied EV = EBITDA * EV/EBITDA Multiple
-      const impliedEV = assumptions.ntmEBITDA * peerMedianEVEBITDA;
-      // Equity Value = EV - Debt + Cash
-      const impliedEquity = impliedEV - currentDebt + currentCash;
-      derivedMidpoint = impliedEquity / sharesOutstandingPreIPO;
-      priceRangeSource = `derived from peer EV/EBITDA multiple (${peerMedianEVEBITDA.toFixed(1)}×)`;
-    }
-    // Method 4: Use peer EV/Rev multiple if revenue company
-    // HARD GUARD: Do NOT use EV/Revenue for restaurant/consumer sectors - they REQUIRE EV/EBITDA
-    else if (!derivedMidpoint && peerMedianEVRevenue > 0 && ntmRevenue > 0 && sharesOutstandingPreIPO > 0) {
+    
+    // Step 5: Error if no anchor could be computed
+    if (anchorPrice === null || anchorPrice <= 0) {
+      // Check for missing inputs in restaurant/consumer sectors
       if (useEVEBITDAValuation) {
-        // Restaurant/consumer sector should use EV/EBITDA, not EV/Revenue - return error
         const errorWarning = `ERROR: ${sector || 'Consumer'} sector detected - EV/EBITDA valuation required but inputs missing. Please provide: (1) ntmEBITDA (or ntmRevenue + ntmEBITDAMargin), AND (2) peerMedianEVEBITDA. EV/Revenue is not appropriate for this sector.`;
         return {
           assumptions,
@@ -910,21 +988,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
           memoText: `IPO PRICING ERROR\n\n${errorWarning}`,
         };
       }
-      // Implied EV = Rev * Multiple, then price = EV / shares (rough approximation)
-      const impliedEV = ntmRevenue * peerMedianEVRevenue;
-      derivedMidpoint = impliedEV / sharesOutstandingPreIPO;
-      priceRangeSource = "derived from peer EV/Revenue multiple";
-    }
-    // Method 5: For biotech with raNPV
-    else if (!derivedMidpoint && totalRaNPV > 0 && peerMedianEVRaNPV > 0 && sharesOutstandingPreIPO > 0) {
-      const impliedEV = totalRaNPV * peerMedianEVRaNPV;
-      derivedMidpoint = impliedEV / sharesOutstandingPreIPO;
-      priceRangeSource = "derived from EV/raNPV multiple";
-    }
-    
-    if (derivedMidpoint === null || derivedMidpoint <= 0) {
-      // Cannot compute - need more user input
-      const errorWarning = "ERROR: Cannot determine price range. Please provide either (1) indicatedPriceRangeLow/High, (2) fairValuePerShare, (3) primaryDollarRaiseM with primarySharesOffered, or (4) peer multiples with revenue/raNPV.";
+      const errorWarning = "ERROR: Cannot determine price range. Please provide either (1) indicatedPriceRangeLow/High, (2) peer multiples with revenue/EBITDA, (3) fairValuePerShare, or (4) primaryDollarRaiseM with primarySharesOffered.";
       return {
         assumptions,
         pricingMatrix: [],
@@ -937,15 +1001,28 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       };
     }
     
-    // Build range around derived midpoint: ±15% (typical IPO filing range)
-    minPrice = Math.round(derivedMidpoint * 0.85);
-    maxPrice = Math.round(derivedMidpoint * 1.15);
+    // === CRITICAL FIX: Price at 85-90% of anchor for +10-15% pop ===
+    // Standard IPO practice: File at discount to fair value to ensure positive aftermarket
+    // Target pricing at ~87.5% of fair value (midpoint of 85-90%)
+    const IPO_DISCOUNT_TARGET = 0.875; // 87.5% of fair value = ~14% expected pop
     
-    // Ensure minimum $1 range
+    const targetPrice = anchorPrice * IPO_DISCOUNT_TARGET;
+    
+    // Build range: ±7.5% around target price
+    minPrice = Math.round(targetPrice * 0.915); // Low end: ~80% of anchor
+    maxPrice = Math.round(targetPrice * 1.085); // High end: ~95% of anchor
+    
+    // Ensure minimum $1 range and proper ordering
     if (minPrice < 1) minPrice = 1;
     if (maxPrice <= minPrice) maxPrice = minPrice + 4;
     
     warnings.push(`Price range ${priceRangeSource}: $${minPrice} - $${maxPrice}`);
+    if (peerDerivedPrice && peerDerivedPrice > 0) {
+      warnings.push(`Peer-implied fair value: $${peerDerivedPrice.toFixed(2)}/share (${peerSource})`);
+    }
+    if (dcfCeilingPrice && dcfCeilingPrice > 0) {
+      warnings.push(`DCF ceiling: $${dcfCeilingPrice.toFixed(2)}/share`);
+    }
   }
   
   const pricePoints: number[] = [];
@@ -987,27 +1064,46 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       sharesSoldGreenshoe = inputGreenshoeShares || (sharesSoldPrimary * (greenshoePercent || 0));
     }
     
-    const totalSharesSold = sharesSoldPrimary + sharesSoldSecondary + sharesSoldGreenshoe;
+    // === GREENSHOE EXERCISE ASSUMPTION ===
+    // Default: true (standard for successful IPOs)
+    const greenshoeExercised = assumptions.greenshoeAssumedExercised !== false;
+    
+    const totalSharesSold = greenshoeExercised 
+      ? sharesSoldPrimary + sharesSoldSecondary + sharesSoldGreenshoe
+      : sharesSoldPrimary + sharesSoldSecondary; // No greenshoe if not exercised
     
     // === FULLY DILUTED SHARES - RECOMPUTED AT EACH PRICE POINT ===
-    // Only primary shares and greenshoe are dilutive (secondary is existing shares)
-    const dilutiveShares = sharesSoldPrimary + sharesSoldGreenshoe;
+    // Only primary shares (and greenshoe if exercised) are dilutive
+    const dilutiveShares = greenshoeExercised 
+      ? sharesSoldPrimary + sharesSoldGreenshoe
+      : sharesSoldPrimary; // No greenshoe dilution if not exercised
     const fdSharesPostIPO = sharesOutstandingPreIPO + dilutiveShares;
     
     // === DILUTION CALCULATION - MECHANICAL ===
     const dilutionPercent = dilutiveShares / fdSharesPostIPO;
     
-    // === PROCEEDS CALCULATION - MECHANICAL: Price × Shares ===
-    const primaryProceedsM = offerPrice * (sharesSoldPrimary + sharesSoldGreenshoe);
+    // === PROCEEDS CALCULATION - CORRECTED: Greenshoe is ADDITIVE ===
+    // Primary proceeds = exact target from primaryDollarRaiseM (greenshoe is SEPARATE)
+    // Greenshoe proceeds = additional 15% on top of primary (if exercised)
+    const basePrimaryProceedsM = offerPrice * sharesSoldPrimary; // Hits exact target (e.g., $550M)
+    const greenshoeProceedsM = greenshoeExercised 
+      ? offerPrice * sharesSoldGreenshoe // ADDITIVE on top (e.g., ~$82.5M)
+      : 0; // No greenshoe proceeds if not exercised
     const secondaryProceedsM = offerPrice * sharesSoldSecondary;
-    const grossProceedsM = primaryProceedsM + secondaryProceedsM;
+    const primaryProceedsM = basePrimaryProceedsM + greenshoeProceedsM; // Total to company
+    const grossProceedsM = basePrimaryProceedsM + greenshoeProceedsM + secondaryProceedsM;
     
     // === MARKET CAP - MECHANICAL: Price × FD Shares ===
     const marketCapM = fdSharesPostIPO * offerPrice;
     
     // === CASH POSITION POST-IPO ===
     // Post-IPO Cash = Current Cash + Primary Proceeds (secondary goes to sellers)
-    const postIPOCashM = currentCash + primaryProceedsM;
+    // Greenshoe is included in primaryProceedsM only if assumed exercised (default true)
+    // Note: greenshoeExercised is defined above in the shares section
+    const effectivePrimaryProceedsM = greenshoeExercised 
+      ? primaryProceedsM // Base + Greenshoe (default)
+      : basePrimaryProceedsM; // Base only (if greenshoe not exercised)
+    const postIPOCashM = currentCash + effectivePrimaryProceedsM;
     
     // === ENTERPRISE VALUE - CORRECT FORMULA: EV = MarketCap + Debt - Cash ===
     const currentDebtM = currentDebt;
@@ -1149,63 +1245,61 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       }
     }
     
-    // === IMPLIED POP CALCULATION - FULLY MECHANICAL FROM USER INPUTS ===
-    // POP is ONLY computed if user provided sector benchmark data
-    // All adjustments use user-provided values directly - NO embedded constants
+    // === IMPLIED POP CALCULATION - CORRECTED: Price below fair value = positive pop ===
+    // Expected Day-1 return = (FairValue - OfferPrice) / OfferPrice
+    // If we price at 87.5% of fair value, expected pop = (1/0.875 - 1) = +14.3%
     
     let baseImpliedPop = 0;
     let bookQualityAdjustment = 0;
-    let valuationPenalty = 0;
+    let valuationPenalty = 0; // Now called valuationBonus when positive
     let secondaryDiscount = 0;
     let catalystDiscount = 0;
     let adjustedImpliedPop = 0;
     
-    if (hasUserProvidedPopData) {
-      // Base implied pop = user-provided sector historical data (no modification)
+    // CORRECTED: Expected pop = how much below fair value we're pricing
+    // If fairValueSupport < 1 (pricing below fair value), pop is POSITIVE
+    // If fairValueSupport > 1 (pricing above fair value), pop is NEGATIVE
+    if (effectiveFairValuePerShare > 0) {
+      // Pop = (FairValue / OfferPrice) - 1 = (1 / fairValueSupport) - 1
+      // e.g., pricing at 87.5% of FV: pop = (1/0.875) - 1 = +14.3%
+      // e.g., pricing at 103% of FV: pop = (1/1.03) - 1 = -2.9%
+      baseImpliedPop = (1 / fairValueSupport) - 1;
+    } else if (hasUserProvidedPopData) {
+      // Fall back to user-provided sector historical data
       baseImpliedPop = baseExpectedReturn;
-      
-      // Book quality adjustment - ONLY if order book data provided
-      // PURELY MECHANICAL: log of oversubscription ratio directly
-      // No embedded multipliers - natural log relationship
-      if (hasExplicitOrderBook && effectiveOversubscription > 0 && effectiveOversubscription !== 1) {
-        // MECHANICAL: natural log gives proportional relationship
-        // 2x oversub = +0.69, 0.5x = -0.69 (symmetric around 1x)
-        bookQualityAdjustment = Math.log(effectiveOversubscription);
-      }
-      
-      // Valuation penalty - PURELY MECHANICAL
-      // Pricing above fair value directly reduces expected return
-      if (fairValueSupport > 1) {
-        valuationPenalty = -(fairValueSupport - 1);
-      }
-      
-      // Secondary discount - PURELY MECHANICAL from user optics input
-      // Discount only applies when user specifies negative optics
-      if (sharesSoldSecondary > 0 && totalSharesSold > 0) {
-        const secondaryPct = sharesSoldSecondary / totalSharesSold;
-        // MECHANICAL: discount = secondary % only when optics is negative
-        secondaryDiscount = secondaryOptics === "negative" ? secondaryPct : 0;
-      }
-      
-      // Binary catalyst discount - PURELY MECHANICAL from user months
-      // No fabricated caps - just inverse relationship
-      // Only applies if user provides both hasBinaryCatalyst and monthsToCatalyst
-      if (hasBinaryCatalyst && monthsToCatalyst !== undefined && monthsToCatalyst > 0) {
-        // MECHANICAL: 1/months gives natural decay (no cap)
-        catalystDiscount = 1 / monthsToCatalyst;
-      }
-      
-      // Total adjusted implied pop - ALL from user inputs
-      adjustedImpliedPop = baseImpliedPop 
-        + bookQualityAdjustment 
-        + valuationPenalty 
-        - secondaryDiscount 
-        - catalystDiscount
-        - downRoundDiscount      // From user's lastPrivateRoundPrice
-        - (dualClass ? dualClassDiscountRate : 0)      // From user's dualClassDiscount
-        - (customerConcentrationTop5 > 0.40 ? (customerConcentrationTop5 - 0.40) : 0); // From user's concentration
     }
-    // If no user POP data provided, all values remain 0 (neutral/omitted)
+    
+    // Book quality adjustment - ONLY if order book data provided
+    // PURELY MECHANICAL: log of oversubscription ratio directly
+    if (hasExplicitOrderBook && effectiveOversubscription > 0 && effectiveOversubscription !== 1) {
+      // Scale down the log impact (0.05x) to avoid overwhelming the base pop
+      bookQualityAdjustment = Math.log(effectiveOversubscription) * 0.05;
+    }
+    
+    // Valuation penalty - now part of base pop calculation above
+    // No separate penalty needed since base pop already reflects fair value discount
+    valuationPenalty = 0;
+    
+    // Secondary discount - PURELY MECHANICAL from user optics input
+    if (sharesSoldSecondary > 0 && totalSharesSold > 0) {
+      const secondaryPct = sharesSoldSecondary / totalSharesSold;
+      secondaryDiscount = secondaryOptics === "negative" ? secondaryPct * 0.5 : 0;
+    }
+    
+    // Binary catalyst discount - PURELY MECHANICAL from user months
+    if (hasBinaryCatalyst && monthsToCatalyst !== undefined && monthsToCatalyst > 0) {
+      catalystDiscount = 0.05 / monthsToCatalyst; // Scaled down
+    }
+    
+    // Total adjusted implied pop
+    adjustedImpliedPop = baseImpliedPop 
+      + bookQualityAdjustment 
+      + valuationPenalty 
+      - secondaryDiscount 
+      - catalystDiscount
+      - downRoundDiscount
+      - (dualClass ? dualClassDiscountRate : 0)
+      - (customerConcentrationTop5 > 0.40 ? (customerConcentrationTop5 - 0.40) * 0.1 : 0);
     
     // BUG FIX #2: Dual-class governance discount (for display)
     const dualClassDiscount = dualClass ? dualClassDiscountRate : 0;
@@ -1224,17 +1318,22 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     const founderOwnershipPost = founderSharesFixed / fdSharesPostIPO;
     
     // Generate warnings - ONLY based on user-provided data, no hardcoded thresholds
-    // Fair value warning - only if fairValueSupport was calculated from user data
-    if (fairValueSupport > 1) {
-      rowWarnings.push(`Valuation: ${(fairValueSupport * 100).toFixed(0)}% of estimated fair value`);
+    // Fair value support - show whether pricing above or below fair value
+    if (fairValueSupport > 0) {
+      const fvPercent = (fairValueSupport * 100).toFixed(0);
+      const fvLabel = fairValueSupport < 1 ? `${fvPercent}% of fair value (discount)` : 
+                      fairValueSupport > 1 ? `${fvPercent}% of fair value (premium)` : 
+                      "at fair value";
+      rowWarnings.push(`Valuation: ${fvLabel}`);
     }
     // Book coverage - report actual metric without judgment threshold
     if (hasExplicitOrderBook && effectiveOversubscription > 0) {
       rowWarnings.push(`Book coverage: ${effectiveOversubscription.toFixed(1)}× effective oversubscription`);
     }
-    // Implied POP - report actual value without judgment threshold
-    if (baseImpliedPop !== 0) {
-      rowWarnings.push(`Implied POP: ${(adjustedImpliedPop * 100).toFixed(1)}%`);
+    // Expected Day-1 pop - ALWAYS show when we have fair value to derive it
+    if (effectiveFairValuePerShare > 0) {
+      const popSign = adjustedImpliedPop >= 0 ? '+' : '';
+      rowWarnings.push(`Expected Day-1 POP: ${popSign}${(adjustedImpliedPop * 100).toFixed(1)}%`);
     }
     // Down-round - only show for biotech or when user explicitly flags it
     if (isDownRound && applyDownRoundLogic) {
@@ -1273,6 +1372,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       vsPeerMedianEBITDA,
       fairValueSupport,
       grossProceedsM,
+      basePrimaryProceedsM,
+      greenshoeProceedsM,
       primaryProceedsM,
       secondaryProceedsM,
       oversubscription,
@@ -1484,8 +1585,13 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   }
   
   rationale.push(`Founders retain ${(recommendedRow.founderOwnershipPost * 100).toFixed(1)}% post-IPO`);
-  // BUG FIX #7: Show primary vs secondary proceeds
-  rationale.push(`Gross proceeds: $${Math.round(recommendedRow.grossProceedsM)}M (Primary to company: $${Math.round(recommendedRow.primaryProceedsM)}M, Secondary to sellers: $${Math.round(recommendedRow.secondaryProceedsM)}M)`);
+  // Show proceeds breakdown with greenshoe as additive
+  const hasGreenshoe = recommendedRow.greenshoeProceedsM > 0;
+  if (hasGreenshoe) {
+    rationale.push(`Gross proceeds: $${Math.round(recommendedRow.grossProceedsM)}M = Base primary $${Math.round(recommendedRow.basePrimaryProceedsM)}M + Greenshoe $${Math.round(recommendedRow.greenshoeProceedsM)}M${recommendedRow.secondaryProceedsM > 0 ? ` + Secondary $${Math.round(recommendedRow.secondaryProceedsM)}M` : ''}`);
+  } else {
+    rationale.push(`Gross proceeds: $${Math.round(recommendedRow.grossProceedsM)}M (Primary: $${Math.round(recommendedRow.basePrimaryProceedsM)}M${recommendedRow.secondaryProceedsM > 0 ? `, Secondary: $${Math.round(recommendedRow.secondaryProceedsM)}M` : ''})`);
+  }
   
   // Add warnings
   for (const w of recommendedRow.warnings) {
@@ -1591,7 +1697,16 @@ function formatIPOMemo(
   memo += `Founder Ownership Post-IPO: ${((recommendedRow.founderOwnershipPost || 0) * 100).toFixed(1)}%\n`;
   memo += `\n--- PROCEEDS CALCULATION ---\n`;
   memo += `Gross Proceeds: $${grossProceeds}M (Price $${recommendedPrice} × ${((recommendedRow.totalSharesSold || 0) * 1).toFixed(2)}M shares)\n`;
-  memo += `  Primary (to company): $${Math.round(recommendedRow.primaryProceedsM || 0)}M\n`;
+  memo += `  Base Primary (to company): $${Math.round(recommendedRow.basePrimaryProceedsM || 0)}M\n`;
+  if ((recommendedRow.greenshoeProceedsM || 0) > 0) {
+    const greenshoeExercised = assumptions.greenshoeAssumedExercised !== false;
+    memo += `  Greenshoe (additive): $${Math.round(recommendedRow.greenshoeProceedsM || 0)}M\n`;
+    if (greenshoeExercised) {
+      memo += `  [Assumption: Full greenshoe exercise - standard for successful IPOs]\n`;
+    } else {
+      memo += `  [Assumption: Greenshoe NOT exercised - cash/EV use base primary only]\n`;
+    }
+  }
   memo += `  Secondary (to sellers): $${Math.round(recommendedRow.secondaryProceedsM || 0)}M\n`;
   
   memo += `\n--- VALUATION MECHANICS ---\n`;
