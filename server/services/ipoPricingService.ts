@@ -626,13 +626,19 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   const useDollarBased = (primaryDollarRaiseM !== undefined && primaryDollarRaiseM > 0);
   
   // BUG FIX #5: Calculate growth deceleration penalty for peer multiple
-  // ONLY apply to revenue-generating companies with explicit growth data (not biotech)
+  // ONLY apply when CEO is NOT prioritizing aggressive pricing/pop maximization
   // MECHANICAL: compression equals the deceleration rate itself (no embedded multiplier)
   let growthDecelPenalty = 0;
   let growthAdjustedPeerMultiple = peerMedianEVRevenue || 0;
   
+  // Check if CEO wants aggressive pricing - if so, skip growth decel penalty
+  const wantsAggressivePricing = pricingAggressiveness === "aggressive" || 
+                                  pricingAggressiveness === "maximum" ||
+                                  managementPriority === "valuation_maximization";
+  
   // Only apply growth decel to non-biotech revenue companies with explicit growth rates
-  if (!isBiotech && !isPreRevenue && peerMedianEVRevenue > 0 && 
+  // AND only when NOT prioritizing aggressive pricing
+  if (!wantsAggressivePricing && !isBiotech && !isPreRevenue && peerMedianEVRevenue > 0 && 
       growthRates && growthRates.fy2024to2025Growth && growthRates.fy2024to2025Growth > 0 && 
       growthRates.fy2025to2026Growth !== undefined) {
     const decelRate = 1 - (growthRates.fy2025to2026Growth / growthRates.fy2024to2025Growth);
@@ -656,6 +662,28 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
   let dcfComputedDetails: string = "";
   let effectiveFairValuePerShare = fairValuePerShare || 0;
   
+  // ALWAYS compute DCF if we have revenue data (for fair value support calculation)
+  // This runs BEFORE price range determination so we have DCF available regardless of how range is set
+  if (!isBiotech && ntmRevenue > 0 && sharesOutstandingPreIPO > 0 && effectiveFairValuePerShare <= 0) {
+    const dcfResult = calculateSimpleDCF({
+      ntmRevenue,
+      ntmEBITDA: assumptions.ntmEBITDA,
+      ntmEBITDAMargin: assumptions.ntmEBITDAMargin,
+      currentYearRevenue: assumptions.currentYearRevenue,
+      growthRates,
+      currentCash,
+      currentDebt,
+      sharesOutstandingPreIPO,
+      sector,
+    });
+    
+    if (dcfResult.fairValuePerShare > 0) {
+      effectiveFairValuePerShare = dcfResult.fairValuePerShare;
+      dcfComputedDetails = dcfResult.dcfDetails;
+      warnings.push(`DCF fair value: $${dcfResult.fairValuePerShare.toFixed(2)}/share`);
+    }
+  }
+  
   if (hasUserProvidedRange) {
     // Guard for inverted range
     if (indicatedPriceRangeHigh <= indicatedPriceRangeLow) {
@@ -676,39 +704,16 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     priceRangeSource = "user-provided";
   } else {
     // COMPUTE price range from other user inputs - no fabrication
-    // Priority: fair value per share > DCF > dollar raise / shares > peer multiples
+    // Priority: fair value (user or DCF) > dollar raise / shares > peer multiples
     
     let derivedMidpoint: number | null = null;
     
-    // Method 1: Use user-provided fair value per share as midpoint
-    if (fairValuePerShare && fairValuePerShare > 0) {
-      derivedMidpoint = fairValuePerShare;
-      effectiveFairValuePerShare = fairValuePerShare;
-      priceRangeSource = "derived from user-provided fair value per share";
+    // Method 1: Use effective fair value (user-provided or DCF-computed)
+    if (effectiveFairValuePerShare > 0) {
+      derivedMidpoint = effectiveFairValuePerShare;
+      priceRangeSource = fairValuePerShare ? "derived from user-provided fair value" : "derived from DCF valuation";
     }
-    // Method 2: COMPUTE DCF fair value from revenue/EBITDA if available (NEW!)
-    else if (!isBiotech && ntmRevenue > 0 && sharesOutstandingPreIPO > 0) {
-      const dcfResult = calculateSimpleDCF({
-        ntmRevenue,
-        ntmEBITDA: assumptions.ntmEBITDA,
-        ntmEBITDAMargin: assumptions.ntmEBITDAMargin,
-        currentYearRevenue: assumptions.currentYearRevenue,
-        growthRates,
-        currentCash,
-        currentDebt,
-        sharesOutstandingPreIPO,
-        sector,
-      });
-      
-      if (dcfResult.fairValuePerShare > 0) {
-        derivedMidpoint = dcfResult.fairValuePerShare;
-        effectiveFairValuePerShare = dcfResult.fairValuePerShare;
-        dcfComputedDetails = dcfResult.dcfDetails;
-        priceRangeSource = "derived from DCF valuation";
-        warnings.push(`DCF fair value computed: $${dcfResult.fairValuePerShare.toFixed(2)}/share`);
-      }
-    }
-    // Method 3: Compute from dollar raise and shares outstanding
+    // Method 2: Compute from dollar raise and shares outstanding
     if (!derivedMidpoint && primaryDollarRaiseM && primaryDollarRaiseM > 0 && inputPrimaryShares && inputPrimaryShares > 0) {
       // Implied price = target raise / shares offered
       derivedMidpoint = primaryDollarRaiseM / inputPrimaryShares;
@@ -1346,9 +1351,12 @@ function formatIPOMemo(
     memo += "\n";
   }
   
-  memo += `Filed range: $${indicatedPriceRangeLow} – $${indicatedPriceRangeHigh}\n`;
+  // Show filed range only if user provided it, otherwise show computed range
+  if (indicatedPriceRangeLow > 0 && indicatedPriceRangeHigh > 0) {
+    memo += `Original filed range: $${indicatedPriceRangeLow} – $${indicatedPriceRangeHigh}\n`;
+  }
   memo += `Recommended offer price:                    $${recommendedPrice.toFixed(2)}\n`;
-  memo += `Recommended amendment range:                $${rangeLow.toFixed(2)} – $${rangeHigh.toFixed(2)}\n\n`;
+  memo += `Recommended range:                          $${rangeLow.toFixed(0)} – $${rangeHigh.toFixed(0)}\n\n`;
   
   memo += `Expected Day-1 Return: ${parseInt(popPercent) >= 0 ? '+' : ''}${popPercent}%\n`;
   
@@ -1372,15 +1380,17 @@ function formatIPOMemo(
   memo += `Post-IPO Cash: $${((recommendedRow.postIPOCashM || 0) * 1).toFixed(1)}M\n`;
   memo += `Enterprise Value: ~$${evB}B (MarketCap + Debt - Cash)\n\n`;
   
-  // Use correct valuation metric
-  if (useRaNPVValuation && totalRaNPV > 0) {
+  // Use correct valuation metric - only show raNPV for explicit biotech companies
+  const explicitlyBiotech = sector === "biotech" || sector === "biopharmaceutical" || sector === "clinical-stage";
+  
+  if (explicitlyBiotech && totalRaNPV > 0) {
     const evRaNPVMultiple = (recommendedRow.evRaNPV || 0).toFixed(2);
     const peerDiffPercent = ((recommendedRow.vsPeerMedianRaNPV || 0) * 100).toFixed(0);
-    memo += `Valuation Method: EV/raNPV (biotech/pre-revenue)\n`;
+    memo += `Valuation Method: EV/raNPV (clinical-stage)\n`;
     memo += `EV/raNPV: ${evRaNPVMultiple}× (Peer Median: ${safePeerMedianEVRaNPV.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
     memo += `Total raNPV: $${totalRaNPV.toFixed(0)}M\n`;
-  } else {
-    const evMultiple = (recommendedRow.ntmEVRevenue === Infinity || recommendedRow.ntmEVRevenue == null) ? "N/A" : recommendedRow.ntmEVRevenue.toFixed(1);
+  } else if (ntmRevenue > 0) {
+    const evMultiple = (recommendedRow.ntmEVRevenue === Infinity || recommendedRow.ntmEVRevenue == null || recommendedRow.ntmEVRevenue === 0) ? "N/A" : recommendedRow.ntmEVRevenue.toFixed(1);
     const peerDiffPercent = ((recommendedRow.vsPeerMedianRevenue || 0) * 100).toFixed(0);
     memo += `NTM EV/Revenue: ${evMultiple}× (Peer Median: ${safePeerMedianEVRevenue.toFixed(1)}×, ${parseInt(peerDiffPercent) >= 0 ? '+' : ''}${peerDiffPercent}%)\n`;
   }
