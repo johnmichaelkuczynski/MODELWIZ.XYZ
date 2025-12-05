@@ -1,0 +1,97 @@
+IPO PRICING APP; I NEED YOU TO VERIFY THAT ITS OUTPUT IS GOOD RELATIVE TO ITS INPUT. HERE IS THE INPUT:
+Helios Space Systems preparing IPO. Cap table: founder CEO holds 38 million shares, co-founder CTO holds 22 million shares, Sequoia owns 18 million shares, Founders Fund owns 12 million shares, unexercised options 9 million shares. Revenue $185 million growing 72% year one, 58% year two, 40% year three, 28% years four and five. Terminal growth 4%. Gross margin 54%, EBITDA margin negative 22% currently improving to positive 14% by year five. Heavy R&D spend at 48% of revenue declining to 28%. CapEx 12% due to manufacturing, NWC 11%. Tax 21%, WACC 14.5%. Comps: Rocket Lab trades at 8x revenue, Intuitive Machines at 6x, Redwire at 4x, Axon at 11x for crossover. Target primary raise $400 million, Sequoia selling $75 million secondary. Include 15% greenshoe. Model is currently EBITDA negative so weight revenue multiples heavily. Show sensitivity on founder control threshold at 50%.
+HERE IS THE OUTPUT: HELIOS SPACE SYSTEMS – FINAL IPO PRICING RECOMMENDATION *** WARNINGS *** DCF fair value: $15.27/share Peer-derived price $24.11 exceeded DCF ceiling $15.27 - using DCF as cap Price range derived from DCF ceiling (peer peer EV/Revenue 7.5× exceeded DCF): $12 - $14 Peer-implied fair value: $24.11/share (peer EV/Revenue 7.5×) DCF ceiling: $15.27/share Growth deceleration penalty: -19.4% multiple compression Valuation: 85% of fair value (discount) Expected Day-1 POP: +17.4% Recommended offer price: $13.00 Recommended range: $12 – $14 Expected Day-1 Return: +17% --- SHARE ISSUANCE DETAIL --- Shares Sold (Primary): 30.77M Shares Sold (Secondary): 5.77M Shares Sold (Greenshoe): 4.62M Total Shares Sold: 41.15M Post-IPO Fully Diluted Shares: 134.38M Dilution from Primary + Greenshoe: 26.3% Founder Ownership Post-IPO: 0.0% --- PROCEEDS CALCULATION --- Gross Proceeds: $535M (Price $13 × 41.15M shares) Base Primary (to company): $400M Greenshoe (additive): $60M [Assumption: Full greenshoe exercise - standard for successful IPOs] Secondary (to sellers): $75M --- VALUATION MECHANICS --- Market Cap: ~$1.7B (Price × FD Shares) Current Debt: $0.0M Post-IPO Cash: $460.0M Enterprise Value: ~$1.3B (MarketCap + Debt - Cash) NTM EV/Revenue: 4.0× (Peer Median: 7.5×, -34%) DCF/share: $15.27 (offer = 85%) Pricing Matrix Offer Price $12 $13 $14 Shares Sold (Total) 44.6M 41.2M 38.2M FD Shares Post-IPO 137.3M 134.4M 131.9M Dilution % 27.9% 26.3% 24.9% Market Cap $1,648 $1,747 $1,846 Enterprise Value $1,188 $1,287 $1,386 NTM EV/Revenue 3.7× 4.0× 4.4× vs peer median 7.5× -39% -34% -27% DCF $15.27 support 79% 85% 92% Gross proceeds $535 $535 $535 Order Book Tier Below midAround mid Above mid Raw Oversubscription 5.0× 2.9× 0.8× Day-1 Pop (sector +0% baseline) Base expected +27% +17% +9% Book adjustment +0% +0% +0% Valuation penalty +0% +0% +0% ADJUSTED POP +27% +17% +9% Founder ownership 0.0% 0.0% 0.0% Recommendation Rationale: • $13 at 4.0× NTM EV/Revenue (34% below peer median) • Book coverage: 2.9× oversubscribed • Expected Day-1 return: +17% • Founders retain 0.0% post-IPO • Gross proceeds: $535M = Base primary $400M + Greenshoe $60M + Secondary $75M File amendment at $12–$14 tonight, price at $13 tomorrow morning. Recommendation Rationale - $13 at 4.0× NTM EV/Revenue (34% below peer median) - Book coverage: 2.9× oversubscribed - Expected Day-1 return: +17% - Founders retain 0.0% post-IPO - Gross proceeds: $535M = Base primary $400M + Greenshoe $60M + Secondary $75M
+Excellent. Let's verify this output against the provided input. The analysis is quite detailed, so I'll structure this as a systematic check of key inputs, calculations, and logical consistency.
+
+Overall Assessment: The Output is FUNDAMENTALLY FLAWED and Contains a Critical, Deal-Breaking Error.
+While the financial mechanics (DCF, multiples) are directionally plausible, the app has made a catastrophic mistake in its share count and ownership calculation, rendering the core recommendation invalid.
+
+Step-by-Step Verification
+1. Input Data Accuracy (Correctly Parsed)
+The app has correctly captured all key inputs: revenue growth, margins, WACC, comp multiples, primary raise ($400M), secondary sale ($75M), greenshoe (15%). This is a good start.
+
+2. Major Red Flags & Errors
+
+A. CRITICAL ERROR: Share Count and Founder Ownership
+
+Input Cap Table:
+
+Founder CEO: 38M
+
+Co-founder CTO: 22M
+
+Sequoia: 18M
+
+Founders Fund: 12M
+
+Pre-IPO Fully Diluted Shares = 38 + 22 + 18 + 12 + 9 (options) = 99 million shares.
+
+Output Claims:
+
+"Post-IPO Fully Diluted Shares: 134.38M"
+
+"Founder Ownership Post-IPO: 0.0%"
+
+"Shares Sold (Primary): 30.77M" (To raise $400M at $13/share? $400M / $13 = ~30.77M. This math is correct but leads to the error).
+
+The Fatal Flaw:
+The output states founders end with 0.0% ownership. This is impossible and indicates the model has completely wiped out the pre-IPO shareholdings. The "Post-IPO Fully Diluted Shares" should be:
+Pre-IPO FD Shares (99M) + New Primary Shares Issued (30.77M) = ~129.77M shares.
+Adding the greenshoe shares (4.62M) gets us to ~134.38M, which matches the output. This means the model is correctly adding shares but has incorrectly set the pre-IPO shares to zero for the ownership calculation.
+
+Correct Founder Ownership at $13/share:
+
+Founder CEO: 38M / 134.38M = 28.3%
+
+Co-founder CTO: 22M / 134.38M = 16.4%
+
+Combined = 44.7%, which is below the 50% control threshold mentioned in the input, but is nowhere near 0.0%. This error invalidates all founder-related rationale and the "0.0%" is a glaring red flag.
+
+B. Secondary Sale Mechanics
+
+Input: "Sequoia selling $75 million secondary."
+
+Output: "Shares Sold (Secondary): 5.77M" ($75M / $13 = ~5.77M). This is correct.
+
+Inconsistency: The output says "Secondary (to sellers): $75M" but also lists "Gross Proceeds: $535M". In an IPO, only the primary raise ($400M) goes to the company. The $75M from Sequoia's secondary sale goes to Sequoia, not into company coffers. The "Post-IPO Cash" should be pre-IPO cash + $400M (primary) + $60M (greenshoe proceeds to company). The $75M should not be added to company cash. The output's "Post-IPO Cash: $460.0M" seems to assume $0 pre-IPO cash plus the full $535M, which is incorrect.
+
+C. Valuation & Pricing Logic (The one part that is mostly correct)
+
+DCF as a Cap: The instruction was to "weight revenue multiples heavily" due to negative EBITDA, but also to be prudent. Using a DCF-derived value ($15.27) as a ceiling on a higher peer-based value ($24.11) is a reasonable and conservative methodology.
+
+Target Multiple: Deriving a 7.5x revenue multiple from the comps (8, 6, 4, 11) is sound (median-ish, slightly below mean).
+
+Discount Application: Pricing at $13, which is 85% of the DCF ceiling, builds in a safety margin and aligns with the "sensitivity" request.
+
+NTM Multiple Check: At $13/share, EV = ~$1.29B. Next Twelve Months (NTM) Revenue? Year 1 revenue is $185M * 1.72 = $318.2M. EV/NTM Rev = $1.29B / $318.2M = 4.1x (matches the output's ~4.0x). This is indeed a ~34% discount to the 7.5x peer median, justifying the "discount" claim.
+
+Expected POP: A +17% day-one pop is aggressive but plausible for a high-growth, discounted deal in a hot sector. The sensitivity table showing higher pops at lower prices is logical.
+
+D. Greenshoe & Proceeds
+
+The 15% greenshoe is correctly applied to the total primary + secondary share count (36.54M * 15% = 5.48M, not 4.62M). Wait, let's check: Primary (30.77M) + Secondary (5.77M) = 36.54M. 15% of that is 5.48M, not 4.62M. The output's greenshoe number is inconsistent.
+
+Final Verdict & Corrected Summary
+The output is NOT GOOD relative to its input. It contains a critical, disqualifying error in capital structure calculation (0% founder ownership) and several secondary inconsistencies in cash proceeds and greenshoe math.
+
+A Corrected, Coherent Output Would State:
+
+Pre-IPO Fully Diluted Shares: 99.0M
+
+New Shares Issued (Primary): 30.77M (to raise $400M at $13)
+
+Shares Sold (Secondary by Sequoia): 5.77M
+
+Greenshoe Option: 5.48M shares (15% of 36.54M)
+
+Post-IPO Fully Diluted Shares (if greenshoe exercised): 99M + 30.77M + 5.48M = 135.25M
+
+Post-IPO Founder Ownership: ~44.4% (Founder CEO: ~28.1%, Co-founder CTO: ~16.3%) — This is below the 50% control threshold.
+
+Proceeds to Company: $400M (Primary) + $71.2M (Greenshoe @ $13) = $471.2M.
+
+Proceeds to Sequoia: $75M (Secondary) + [$3.8M from greenshoe if their shares are part of it? This gets complex, but the $75M is the key figure].
+
+Valuation & Pricing Rationale (This part of the output was sound): Offer price $13 is recommended as a ~35% discount to peer revenue multiples, capped by a conservative DCF, providing a likely ~17% day-one gain to attract investors while maximizing capital raised.
+
+Recommendation to You: Do not rely on this app's output in its current form. The model has a severe bug in its ownership dilution logic. It needs to be debugged to correctly account for pre-existing shareholders before it can be used for any real-world analysis. The financial valuation logic is competent, but the corporate finance/cap table mechanics are broken.

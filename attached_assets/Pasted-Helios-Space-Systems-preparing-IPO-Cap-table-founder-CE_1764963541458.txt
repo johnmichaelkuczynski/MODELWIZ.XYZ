@@ -1,0 +1,105 @@
+Helios Space Systems preparing IPO. Cap table: founder CEO holds 38 million shares, co-founder CTO holds 22 million shares, Sequoia owns 18 million shares, Founders Fund owns 12 million shares, unexercised options 9 million shares. Revenue $185 million growing 72% year one, 58% year two, 40% year three, 28% years four and five. Terminal growth 4%. Gross margin 54%, EBITDA margin negative 22% currently improving to positive 14% by year five. Heavy R&D spend at 48% of revenue declining to 28%. CapEx 12% due to manufacturing, NWC 11%. Tax 21%, WACC 14.5%. Comps: Rocket Lab trades at 8x revenue, Intuitive Machines at 6x, Redwire at 4x, Axon at 11x for crossover. Target primary raise $400 million, Sequoia selling $75 million secondary. Include 15% greenshoe. Model is currently EBITDA negative so weight revenue multiples heavily. Show sensitivity on founder control threshold at 50%.RetryJKHELIOS SPACE SYSTEMS – FINAL IPO PRICING RECOMMENDATION
+
+*** WARNINGS ***
+   DCF fair value: $15.27/share
+   Peer-derived price $24.11 exceeded DCF ceiling $15.27 - using DCF as cap
+   Price range derived from DCF ceiling (peer peer EV/Revenue 7.5× exceeded DCF): $12 - $14
+   Peer-implied fair value: $24.11/share (peer EV/Revenue 7.5×)
+   DCF ceiling: $15.27/share
+   Growth deceleration penalty: -19.4% multiple compression
+   Valuation: 85% of fair value (discount)
+   Expected Day-1 POP: +17.4%
+
+Recommended offer price:                    $13.00
+Recommended range:                          $12 – $14
+
+Expected Day-1 Return: +17%
+
+--- SHARE ISSUANCE DETAIL ---
+Shares Sold (Primary): 30.77M
+Shares Sold (Secondary): 5.77M
+Shares Sold (Greenshoe): 4.62M
+Total Shares Sold: 41.15M
+Post-IPO Fully Diluted Shares: 134.38M
+Dilution from Primary + Greenshoe: 26.3%
+Founder Ownership Post-IPO: 0.0%
+
+--- PROCEEDS CALCULATION ---
+Gross Proceeds: $535M (Price $13 × 41.15M shares)
+  Base Primary (to company): $400M
+  Greenshoe (additive): $60M
+  [Assumption: Full greenshoe exercise - standard for successful IPOs]
+  Secondary (to sellers): $75M
+
+--- VALUATION MECHANICS ---
+Market Cap: ~$1.7B (Price × FD Shares)
+Current Debt: $0.0M
+Post-IPO Cash: $460.0M
+Enterprise Value: ~$1.3B (MarketCap + Debt - Cash)
+
+NTM EV/Revenue: 4.0× (Peer Median: 7.5×, -34%)
+DCF/share: $15.27 (offer = 85%)
+
+Pricing Matrix
+
+Offer Price                   $12       $13       $14
+Shares Sold (Total)         44.6M     41.2M     38.2M
+FD Shares Post-IPO         137.3M    134.4M    131.9M
+Dilution %                  27.9%     26.3%     24.9%
+Market Cap                 $1,648    $1,747    $1,846
+Enterprise Value           $1,188    $1,287    $1,386
+NTM EV/Revenue               3.7×      4.0×      4.4×
+vs peer median 7.5×         -39%      -34%      -27%
+DCF $15.27 support            79%       85%       92%
+Gross proceeds               $535      $535      $535
+Order Book Tier         Below midAround mid Above mid
+Raw Oversubscription         5.0×      2.9×      0.8×
+Day-1 Pop (sector +0% baseline)
+  Base expected              +27%      +17%       +9%
+  Book adjustment             +0%       +0%       +0%
+  Valuation penalty           +0%       +0%       +0%
+  ADJUSTED POP               +27%      +17%       +9%
+Founder ownership            0.0%      0.0%      0.0%
+
+Recommendation Rationale:
+• $13 at 4.0× NTM EV/Revenue (34% below peer median)
+• Book coverage: 2.9× oversubscribed
+• Expected Day-1 return: +17%
+• Founders retain 0.0% post-IPO
+• Gross proceeds: $535M = Base primary $400M + Greenshoe $60M + Secondary $75M
+
+File amendment at $12–$14 tonight, price at $13 tomorrow morning.Recommendation Rationale
+* -$13 at 4.0× NTM EV/Revenue (34% below peer median)
+* -Book coverage: 2.9× oversubscribed
+* -Expected Day-1 return: +17%
+* -Founders retain 0.0% post-IPO
+* -Gross proceeds: $535M = Base primary $400M + Greenshoe $60M + Secondary $75MShow lessIdentified pricing model bugs: founder ownership miscalculation and missing sensitivity analysis.12sLooking at this output, the user is testing their IPO pricing model. Let me analyze what's working and what's still broken.
+What's working now:
+
+Positive Day-1 pop (+17%) - this is good, pricing below DCF
+Greenshoe is now additive ($60M on top of $400M base)
+Secondary proceeds correctly calculated ($75M)
+DCF ceiling logic is being applied (peer-derived $24.11 capped to DCF $15.27)
+Proceeds breakdown is cleaner
+
+What's still broken:
+
+Founder Ownership Post-IPO: 0.0% — The input clearly states founder CEO holds 38M shares, CTO holds 22M shares = 60M founder shares total. Post-IPO FD shares = 134.38M. So founders should own 60M / 134.38M = ~44.7%, not 0.0%
+The user specifically asked to "Show sensitivity on founder control threshold at 50%" - this wasn't addressed
+The pricing matrix only shows 3 price points ($12, $13, $14) which is a narrow range
+
+The founder ownership bug is still there from before. This is a significant issue.Major improvement—Day-1 pop is now positive, greenshoe is additive, proceeds logic is correct.
+Still broken:
+
+Founder Ownership = 0.0% — Input explicitly states CEO holds 38M shares, CTO holds 22M shares (60M total). With 134.38M FD shares post-IPO, founders should own ~44.6%, not 0.0%. This bug persists from earlier tests.
+50% control threshold analysis missing — Input requested sensitivity on founder control at 50%. Model didn't address it. At 44.6% founders would lose majority control—this should trigger a warning or show what price/dilution combo preserves 50%+.
+Narrow pricing matrix — Only 3 price points ($12-$14). Earlier outputs showed 6. Inconsistent behavior.
+
+
+The founder calc is likely:
+
+Not summing multiple founder entries (CEO + CTO)
+Or not carrying pre-IPO shares through to post-IPO calc
+Or defaulting to 0 when "founder" keyword isn't exact match
+
+Check if your parser handles "founder CEO holds X, co-founder CTO holds Y" as two additive founder buckets.

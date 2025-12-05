@@ -62,6 +62,7 @@ export interface IPOAssumptions {
   sectorMedianFirstDayPop?: number; // Can be negative for biotech
   
   foundersEmployeesOwnership: number;
+  founderSharesExplicitM?: number; // Explicit founder shares in millions (from cap table parsing)
   vcPeOwnership: number;
   
   underwritingFeePercent: number;
@@ -229,11 +230,19 @@ CRITICAL PARSING RULES:
    - Parse "NWC" or "NWC at 9%" → nwcDays (integer or percent, e.g., 0.09 for 9% of revenue)
 
 16. CAP TABLE PARSING (FLEXIBLE):
-   - "founders hold 45 million shares" → add to sharesOutstandingPreIPO
+   - "founders hold 45 million shares" → add to sharesOutstandingPreIPO AND set founderSharesExplicitM = 45
    - "Series A/B/C investors hold 30 million shares" → add to sharesOutstandingPreIPO
    - "employee option pool is 8 million shares" → add to sharesOutstandingPreIPO
    - Sum ALL share categories for total sharesOutstandingPreIPO (e.g., 45 + 30 + 8 = 83 million)
-   - "Pre-IPO cap table: founders X, investors Y, options Z" → sharesOutstandingPreIPO = X + Y + Z
+   - "Pre-IPO cap table: founders X, investors Y, options Z" → sharesOutstandingPreIPO = X + Y + Z, founderSharesExplicitM = X
+
+17. FOUNDER SHARES EXTRACTION (CRITICAL - SUM ALL FOUNDER BUCKETS):
+   - "founder CEO holds 38 million shares" → add 38 to founderSharesExplicitM
+   - "co-founder CTO holds 22 million shares" → add 22 to founderSharesExplicitM (co-founder = founder!)
+   - "founder", "co-founder", "founding partner", "founding CEO", "founding team" → ALL count as founders
+   - ALWAYS SUM all founder/co-founder entries: CEO 38M + CTO 22M = founderSharesExplicitM = 60
+   - This is SEPARATE from foundersEmployeesOwnership (which is a percentage)
+   - founderSharesExplicitM = explicit share count in millions (used for ownership calculation)
 
 Return JSON:
 {
@@ -283,6 +292,7 @@ Return JSON:
   "sectorMedianFirstDayPop": number (decimal, can be negative),
   
   "foundersEmployeesOwnership": number (decimal),
+  "founderSharesExplicitM": number (millions - sum of ALL founder/co-founder share counts if provided explicitly),
   "vcPeOwnership": number (decimal),
   
   "underwritingFeePercent": number (ONLY if explicitly provided, default 0 if not),
