@@ -712,7 +712,7 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
       return;
     }
     if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS', 'CONVERTIBLE DEBT'].includes(label as string)) {
-      summarySheet.getCell(`A${row}`).style = sectionStyle;
+      assumptionsSheet.getCell(`A${row}`).style = sectionStyle;
     }
     assumptionsSheet.getCell(`A${row}`).value = label as string;
     assumptionsSheet.getCell(`B${row}`).value = value;
