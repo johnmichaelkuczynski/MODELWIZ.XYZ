@@ -13,6 +13,7 @@ interface Shareholder {
   shares: number;
   type: "founder" | "investor" | "option_pool" | "management" | "other";
   votingMultiple?: number; // For dual-class shares (e.g., 10 for 10:1 voting)
+  secondarySalePercent?: number; // Percentage of position being sold (e.g., 0.40 for selling 40%)
 }
 
 // Comparable company for valuation
@@ -59,8 +60,9 @@ export interface IPOAssumptions {
   
   // IPO Specifics
   primaryRaiseAmount: number;
-  secondarySaleShares: number;
+  secondarySaleShares: number; // Can be calculated from shareholder secondarySalePercent or specified directly
   greenshoePercent: number;
+  debtRepaymentAmount: number; // Amount of debt to pay down from proceeds
   
   // Valuation Comparables
   comparables: ComparableCompany[];
@@ -114,6 +116,9 @@ export interface IPOPricingResult {
   postIPODebt: number;
   postIPOEnterpriseValue: number;
   marketCap: number;
+  
+  // Pre-IPO Valuation (implied)
+  impliedPreIPOValuation: number;
   
   // Ownership & Dilution
   dilutionPercent: number;
@@ -170,7 +175,8 @@ Return a JSON object with the following structure:
         "name": "Founder/CEO",
         "shares": number (in millions),
         "type": "founder" | "investor" | "option_pool" | "management" | "other",
-        "votingMultiple": number (optional, for dual-class shares, e.g., 10 for 10:1)
+        "votingMultiple": number (optional, for dual-class shares, e.g., 10 for 10:1),
+        "secondarySalePercent": number (optional, percentage of position being sold, e.g., 0.40 for selling 40% of their shares)
       }
     ]
   },
@@ -188,8 +194,9 @@ Return a JSON object with the following structure:
   "terminalGrowthRate": number (as decimal, e.g., 0.03 for 3%),
   
   "primaryRaiseAmount": number (in millions, new money raised by company),
-  "secondarySaleShares": number (in millions, shares sold by existing holders),
+  "secondarySaleShares": number (in millions, total shares sold by existing holders - set to 0 if using per-shareholder secondarySalePercent),
   "greenshoePercent": number (as decimal, typically 0.15 for 15%),
+  "debtRepaymentAmount": number (in millions, amount of debt to pay down from IPO proceeds, default 0),
   
   "comparables": [
     {
@@ -217,6 +224,15 @@ Return a JSON object with the following structure:
   "ipoDiscountPercent": number (as decimal, e.g., 0.15 for 15% discount to fair value),
   "projectionYears": number (default 5)
 }
+
+SECONDARY SALE EXTRACTION:
+- If the description says "Series A selling 40% of position" and Series A owns 14.2M shares, set secondarySalePercent: 0.40 for that shareholder
+- Calculate total secondary shares from: sum of (shares × secondarySalePercent) for each selling shareholder
+- If a flat number of secondary shares is given, use secondarySaleShares directly
+
+DEBT REPAYMENT EXTRACTION:
+- If the description says "pay down $150M of debt", set debtRepaymentAmount: 150
+- This reduces post-IPO debt by this amount
 
 COMPANY TYPE CLASSIFICATION:
 - "mature": Profitable, stable growth, positive EBITDA, established business model
@@ -355,7 +371,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): Omit<IPOPricin
     wacc,
     terminalGrowthRate,
     primaryRaiseAmount,
-    secondarySaleShares,
+    secondarySaleShares: directSecondarySaleShares,
     greenshoePercent,
     comparables,
     dualClassShares,
@@ -363,16 +379,36 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): Omit<IPOPricin
     pipelineAssets,
     ipoDiscountPercent,
     projectionYears,
+    debtRepaymentAmount = 0, // ERROR 3 FIX: Default to 0 if not specified
   } = assumptions;
 
   console.log(`[IPO Model] ============ IPO PRICING ANALYSIS ============`);
   console.log(`[IPO Model] Company: ${companyName}, Type: ${companyType}`);
   console.log(`[IPO Model] Pre-IPO Shares: ${preIPOShares.total.toFixed(2)}M`);
   console.log(`[IPO Model] Primary Raise Target: $${primaryRaiseAmount.toFixed(2)}M`);
+  console.log(`[IPO Model] Debt Repayment Target: $${debtRepaymentAmount.toFixed(2)}M`);
 
   const warnings: string[] = [];
   let valuationMethodology = "";
   let enterpriseValue = 0;
+  
+  // ============ ERROR 1 FIX: CALCULATE SECONDARY SHARES FROM SHAREHOLDER PERCENTAGES ============
+  // If shareholders have secondarySalePercent, calculate from that; otherwise use direct value
+  let calculatedSecondaryShares = 0;
+  const shareholderSecondaryDetails: { name: string; sharesSold: number }[] = [];
+  
+  for (const holder of preIPOShares.breakdown) {
+    if (holder.secondarySalePercent && holder.secondarySalePercent > 0) {
+      const sharesSold = holder.shares * holder.secondarySalePercent;
+      calculatedSecondaryShares += sharesSold;
+      shareholderSecondaryDetails.push({ name: holder.name, sharesSold });
+      console.log(`[IPO Model] Secondary: ${holder.name} selling ${(holder.secondarySalePercent * 100).toFixed(0)}% of ${holder.shares.toFixed(2)}M = ${sharesSold.toFixed(2)}M shares`);
+    }
+  }
+  
+  // Use calculated secondary shares if any, otherwise fall back to direct value
+  const secondarySaleShares = calculatedSecondaryShares > 0 ? calculatedSecondaryShares : directSecondarySaleShares;
+  console.log(`[IPO Model] Total Secondary Shares: ${secondarySaleShares.toFixed(2)}M`);
 
   // ============ STEP 1: CALCULATE ENTERPRISE VALUE BASED ON COMPANY TYPE ============
   
@@ -602,51 +638,112 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): Omit<IPOPricin
 
   // ============ STEP 6: POST-IPO FINANCIAL POSITION ============
   
+  // ERROR 3 FIX: Implement debt repayment from proceeds
   // Company gets primary proceeds + greenshoe (NOT secondary - that goes to sellers)
-  const postIPOCash = currentCash + netPrimaryProceeds + greenshoeProceeds;
-  const postIPODebt = currentDebt; // Assuming no debt paydown
+  // Then pays down debt as specified
+  const postIPOCash = currentCash + netPrimaryProceeds + greenshoeProceeds - debtRepaymentAmount;
+  const postIPODebt = Math.max(0, currentDebt - debtRepaymentAmount); // Reduce debt by repayment amount
   const marketCap = postIPOShares * midPrice;
   const postIPOEnterpriseValue = marketCap + postIPODebt - postIPOCash;
+  
+  console.log(`[IPO Model] Post-IPO Debt: $${postIPODebt.toFixed(0)}M (after $${debtRepaymentAmount.toFixed(0)}M repayment)`);
 
-  // ============ STEP 7: OWNERSHIP TABLE ============
+  // ERROR 6 FIX: Calculate implied pre-IPO valuation
+  // Pre-IPO Valuation = Market Cap at offer - Primary Proceeds (new money)
+  // OR: Offer Price × Pre-IPO Shares
+  const impliedPreIPOValuation = midPrice * preIPOShares.total;
+  console.log(`[IPO Model] Implied Pre-IPO Valuation: $${impliedPreIPOValuation.toFixed(0)}M`);
+
+  // ============ STEP 7: OWNERSHIP TABLE (with ERROR 1 & ERROR 4 fixes) ============
+  
+  // ERROR 4 FIX: Correct voting power calculation for dual-class shares
+  // For dual-class: Voting Power = (Class B shares × voting multiple) ÷ (Total Class B × multiple + Total Class A × 1)
+  // Calculate total voting power denominator
+  let totalVotingShares = 0;
+  for (const holder of preIPOShares.breakdown) {
+    const votingWeight = dualClassShares && holder.votingMultiple ? holder.votingMultiple : 1;
+    // ERROR 1 FIX: Subtract secondary sale shares from post-IPO holdings
+    const holdersSecondarySale = holder.secondarySalePercent ? holder.shares * holder.secondarySalePercent : 0;
+    const postIPOHolderShares = holder.shares - holdersSecondarySale;
+    totalVotingShares += postIPOHolderShares * votingWeight;
+  }
+  // Public shareholders have 1 vote per share (Class A)
+  totalVotingShares += publicFloat * 1;
   
   const ownershipTable = preIPOShares.breakdown.map(holder => {
-    const postIPOPercent = (holder.shares / postIPOShares) * 100;
-    const votingPercent = dualClassShares && holder.votingMultiple
-      ? (holder.shares * holder.votingMultiple) / 
-        (preIPOShares.breakdown.reduce((sum, h) => sum + h.shares * (h.votingMultiple || 1), 0) + primarySharesAtMid + greenshoeShares) * 100
-      : postIPOPercent;
+    // ERROR 1 FIX: Subtract secondary sale shares from seller's post-IPO ownership
+    const holdersSecondarySale = holder.secondarySalePercent ? holder.shares * holder.secondarySalePercent : 0;
+    const postIPOHolderShares = holder.shares - holdersSecondarySale;
+    const postIPOPercent = (postIPOHolderShares / postIPOShares) * 100;
+    
+    // ERROR 4 FIX: Correct voting power for dual-class
+    const votingWeight = dualClassShares && holder.votingMultiple ? holder.votingMultiple : 1;
+    const holderVotingPower = postIPOHolderShares * votingWeight;
+    const votingPercent = (holderVotingPower / totalVotingShares) * 100;
     
     return {
       name: holder.name,
       preIPOShares: holder.shares,
       preIPOPercent: (holder.shares / preIPOShares.total) * 100,
-      postIPOShares: holder.shares, // Existing shares don't change
+      postIPOShares: postIPOHolderShares, // Reduced by secondary sale
       postIPOPercent,
       votingPercent,
     };
   });
   
   // Add public shareholders
+  const publicVotingPercent = (publicFloat * 1 / totalVotingShares) * 100;
   ownershipTable.push({
     name: "Public Shareholders",
     preIPOShares: 0,
     preIPOPercent: 0,
     postIPOShares: publicFloat,
     postIPOPercent: (publicFloat / postIPOShares) * 100,
-    votingPercent: (publicFloat / postIPOShares) * 100,
+    votingPercent: publicVotingPercent,
   });
   
-  // Calculate dilution
-  const dilutionPercent = ((postIPOShares - preIPOShares.total) / preIPOShares.total) * 100;
+  // ERROR 2 FIX: Correct dilution formula
+  // Dilution % = New Shares Issued ÷ (Pre-IPO Shares + New Shares Issued)
+  // NOT: New Shares ÷ Pre-IPO Shares (which gives >100% incorrectly)
+  const newSharesIssued = primarySharesAtMid + greenshoeShares;
+  const dilutionPercent = (newSharesIssued / (preIPOShares.total + newSharesIssued)) * 100;
+  console.log(`[IPO Model] Dilution: ${newSharesIssued.toFixed(2)}M / (${preIPOShares.total.toFixed(2)}M + ${newSharesIssued.toFixed(2)}M) = ${dilutionPercent.toFixed(1)}%`);
   
-  // Check founder control
+  // Check founder control (using corrected post-IPO shares after secondary sales)
   const founderHolders = preIPOShares.breakdown.filter(h => h.type === "founder");
-  const totalFounderShares = founderHolders.reduce((sum, h) => sum + h.shares, 0);
-  const founderPostIPOPercent = (totalFounderShares / postIPOShares) * 100;
+  let totalFounderPostIPOShares = 0;
+  let totalFounderVotingPower = 0;
+  for (const holder of founderHolders) {
+    const secondarySale = holder.secondarySalePercent ? holder.shares * holder.secondarySalePercent : 0;
+    const postShares = holder.shares - secondarySale;
+    totalFounderPostIPOShares += postShares;
+    const votingWeight = dualClassShares && holder.votingMultiple ? holder.votingMultiple : 1;
+    totalFounderVotingPower += postShares * votingWeight;
+  }
+  const founderPostIPOPercent = (totalFounderPostIPOShares / postIPOShares) * 100;
+  const founderVotingPercent = (totalFounderVotingPower / totalVotingShares) * 100;
+  
+  console.log(`[IPO Model] Founder Post-IPO Ownership: ${founderPostIPOPercent.toFixed(1)}%`);
+  console.log(`[IPO Model] Founder Voting Power: ${founderVotingPercent.toFixed(1)}%`);
   
   if (founderControlMinimum && founderPostIPOPercent < founderControlMinimum * 100) {
     warnings.push(`Founder ownership (${founderPostIPOPercent.toFixed(1)}%) falls below required minimum (${(founderControlMinimum * 100).toFixed(1)}%)`);
+  }
+  
+  // VALIDATION: Sum of ownership should equal 100%
+  const totalOwnership = ownershipTable.reduce((sum, h) => sum + h.postIPOPercent, 0);
+  if (Math.abs(totalOwnership - 100) > 0.5) {
+    warnings.push(`Ownership percentages sum to ${totalOwnership.toFixed(1)}% (should be 100%)`);
+  }
+  
+  // VALIDATION: Dilution should always be < 100%
+  if (dilutionPercent >= 100) {
+    warnings.push(`Dilution of ${dilutionPercent.toFixed(1)}% is invalid - check share calculations`);
+  }
+  
+  // ERROR 5 VALIDATION: Offer price should be lower than fair value (discount applied)
+  if (midPrice >= fairValuePerShare) {
+    warnings.push(`Offer price ($${midPrice.toFixed(2)}) should be below fair value ($${fairValuePerShare.toFixed(2)})`);
   }
 
   // ============ STEP 8: VALUATION MULTIPLES ============
@@ -667,13 +764,18 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): Omit<IPOPricin
   // ============ STEP 9: PRICING MATRIX ============
   
   const createScenario = (scenarioName: string, price: number, primaryShares: number) => {
-    const postShares = preIPOShares.total + primaryShares + (primaryShares + secondarySaleShares) * greenshoePercent;
+    const scenarioGreenshoe = (primaryShares + secondarySaleShares) * greenshoePercent;
+    const scenarioNewShares = primaryShares + scenarioGreenshoe;
+    const postShares = preIPOShares.total + scenarioNewShares;
     const mktCap = postShares * price;
     const netProceeds = primaryShares * price * (1 - underwritingDiscount);
-    const postCash = currentCash + netProceeds + (primaryShares + secondarySaleShares) * greenshoePercent * price * (1 - underwritingDiscount);
-    const ev = mktCap + currentDebt - postCash;
-    const dilution = ((postShares - preIPOShares.total) / preIPOShares.total) * 100;
-    const founderOwn = (totalFounderShares / postShares) * 100;
+    const scenarioGreenshoeProceeds = scenarioGreenshoe * price * (1 - underwritingDiscount);
+    const postCash = currentCash + netProceeds + scenarioGreenshoeProceeds - debtRepaymentAmount;
+    const postDebt = Math.max(0, currentDebt - debtRepaymentAmount);
+    const ev = mktCap + postDebt - postCash;
+    // ERROR 2 FIX: Correct dilution formula
+    const dilution = (scenarioNewShares / (preIPOShares.total + scenarioNewShares)) * 100;
+    const founderOwn = (totalFounderPostIPOShares / postShares) * 100;
     const dayOnePop = ((fairValuePerShare - price) / price) * 100;
     
     return {
@@ -741,6 +843,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): Omit<IPOPricin
     postIPODebt,
     postIPOEnterpriseValue,
     marketCap,
+    impliedPreIPOValuation, // ERROR 6 FIX: Include implied pre-IPO valuation
     dilutionPercent,
     ownershipTable,
     impliedEVRevenue,
@@ -807,8 +910,10 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     ["Fair Value per Share", result.fairValuePerShare, "$#,##0.00"],
     ["Enterprise Value", result.enterpriseValue, "$#,##0.0,,\"M\""],
     ["Equity Value", result.equityValue, "$#,##0.0,,\"M\""],
+    ["Implied Pre-IPO Valuation", result.impliedPreIPOValuation, "$#,##0.0,,\"M\""],
     ["Market Cap (at offer)", result.marketCap, "$#,##0.0,,\"M\""],
     ["Post-IPO Enterprise Value", result.postIPOEnterpriseValue, "$#,##0.0,,\"M\""],
+    ["Post-IPO Debt", result.postIPODebt, "$#,##0.0,,\"M\""],
     ["Total Offering Size", result.totalOfferingSize, "$#,##0.0,,\"M\""],
     ["Implied EV/Revenue", result.impliedEVRevenue, "0.0x"],
     ["Implied EV/EBITDA", result.impliedEVEBITDA || "N/A", result.impliedEVEBITDA ? "0.0x" : "@"],

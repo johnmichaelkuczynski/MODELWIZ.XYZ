@@ -4134,7 +4134,16 @@ Examples:
                     {((financeResult.primarySharesIssued || 0) / 1000000).toFixed(1)}M
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Float: {((financeResult.publicFloat || 0) * 100).toFixed(1)}%
+                    Float: {((financeResult.publicFloat || 0) / 1000000).toFixed(1)}M
+                  </div>
+                </div>
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Pre-IPO Valuation</div>
+                  <div className="text-xl font-bold text-indigo-700 dark:text-indigo-300">
+                    ${((financeResult.impliedPreIPOValuation || 0) / 1000000).toFixed(0)}M
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Implied at offer price
                   </div>
                 </div>
               </div>
@@ -4169,7 +4178,7 @@ Examples:
                   <div className="text-center p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-lg">
                     <div className="text-xs text-gray-600 dark:text-gray-400">Dilution</div>
                     <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                      {((financeResult.dilutionPercent || 0) * 100).toFixed(1)}%
+                      {(financeResult.dilutionPercent || 0).toFixed(1)}%
                     </div>
                   </div>
                 </div>

@@ -1,0 +1,95 @@
+FIX THESE SPECIFIC ERRORS IN IPO PRICING FUNCTION:
+
+ERROR 1: FIX SECONDARY SALE CALCULATION
+
+When input says "Series A selling 40% of position" → Calculate: 14.2M shares × 40% = 5.68M shares
+
+When input says "Series B selling 25% of position" → Calculate: 16.8M shares × 25% = 4.2M shares
+
+Total secondary shares = 5.68M + 4.2M = 9.88M shares
+
+Secondary proceeds = these shares × offer price
+
+These shares are ADDED to total offering but SUBTRACTED from selling shareholders' post-IPO ownership
+
+ERROR 2: FIX DILUTION FORMULA
+
+Dilution % = New Shares Issued ÷ (Pre-IPO Shares + New Shares Issued)
+
+NOT: New Shares ÷ Pre-IPO Shares (which gives >100% incorrectly)
+
+Example: 78.1M new ÷ (93.1M + 78.1M) = 45.6% dilution ✓
+
+Example: 78.1M new ÷ 93.1M existing = 83.9% (WRONG - this is not dilution percentage)
+
+ERROR 3: IMPLEMENT DEBT REPAYMENT
+
+When input says "pay down $150M of debt" → Reduce debt by $150M
+
+Post-IPO debt = $220M - $150M = $70M
+
+This affects: Enterprise Value = Market Cap + Debt - Cash
+
+ERROR 4: CORRECT VOTING POWER CALCULATION
+
+For dual-class shares: Voting power ≠ Economic ownership
+
+Formula: (Class B shares × 10) ÷ (Total Class B × 10 + Total Class A × 1)
+
+For founders: (18.5M × 10 + 12.3M × 10) ÷ [(18.5M+12.3M)×10 + (all other shares)×1]
+
+This should give >90% voting power for founders
+
+ERROR 5: FIX OFFER PRICE LOGIC
+
+Offer price should be LOWER than fair value per share (15-30% discount)
+
+Calculate fair value first ($15.09 in this case)
+
+Then set offer price at discount: $15.09 × (1 - 0.20) = ~$12.07
+
+NEVER set offer price below implied pre-IPO value
+
+ERROR 6: CALCULATE IMPLIED PRE-IPO VALUATION
+
+Pre-IPO valuation = Offer Price × Post-IPO Shares - Primary Proceeds
+
+Or: (Market Cap at offer) - (New Money from primary)
+
+This tells us what the company was worth before new money
+
+ADD THESE VALIDATION CHECKS:
+
+Sum of all ownership % = 100% (currently sums to ~100%)
+
+Dilution < 100% (always)
+
+Offer Price < Fair Value per Share (discount applied)
+
+Voting power correctly calculated for dual-class
+
+Secondary sale shares deducted from selling shareholders
+
+TEST WITH THESE CALCULATIONS:
+
+At $12.07 offer price:
+
+Primary shares needed: $600M ÷ $12.07 = 49.7M shares
+
+Secondary shares: 9.88M shares (from Series A/B sales)
+
+Total offering: 59.6M shares
+
+Greenshoe: 59.6M × 15% = 8.94M shares
+
+Post-IPO shares: 93.1M + 49.7M + 8.94M = 151.74M shares
+
+Market Cap: $12.07 × 151.74M = $1.831B
+
+Founder ownership: 30.8M ÷ 151.74M = 20.3%
+
+Dilution: 49.7M ÷ (93.1M + 49.7M) = 34.8%
+
+RECALCULATE EVERYTHING WITH THESE CORRECTIONS.
+
+The function is generating numbers but applying wrong financial formulas. Fix these six specific errors and the output will become realistic and usable.
