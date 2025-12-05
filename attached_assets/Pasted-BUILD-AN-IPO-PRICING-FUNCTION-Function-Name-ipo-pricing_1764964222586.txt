@@ -1,0 +1,157 @@
+BUILD AN IPO PRICING FUNCTION
+
+Function Name: ipo_pricing_analysis
+
+Input Format: The function must accept natural language input describing a company preparing for IPO.
+
+Required Tasks:
+
+PARSE THE INPUT - Extract ALL key information:
+
+Pre-IPO fully diluted shares (breakdown by founder, investor, option pools)
+
+Financial projections (revenue, growth rates, margins, terminal growth)
+
+Current financials (revenue, EBITDA, cash, debt)
+
+Capital structure (debt, cash, interest rates)
+
+IPO specifics (primary raise amount, secondary sale amounts, greenshoe percentage)
+
+Comparable companies and their trading multiples
+
+Discount rate (WACC) and tax rate
+
+Founder control requirements (minimum ownership percentage)
+
+Any special considerations (dual-class shares, milestone payments, lock-ups)
+
+CLASSIFY THE COMPANY TYPE:
+
+Determine if this is: (a) Mature/Profitable, (b) High-Growth Tech/SaaS, (c) Pre-Revenue Biotech/Life Sciences, or (d) Industrial/Asset-Heavy
+
+This classification determines the primary valuation methodology
+
+CALCULATE VALUATION USING APPROPRIATE METHODOLOGY:
+
+For Mature/Profitable Companies: Use DCF as primary method
+
+For High-Growth Tech: Use both DCF AND revenue multiples, apply the more conservative result
+
+For Pre-Revenue Biotech: Use risk-adjusted NPV (rNPV) with probability of success for each pipeline asset
+
+For Industrial Companies: Use EBITDA multiples and asset-based valuation
+
+Always calculate a fair value per share from the enterprise valuation
+
+CALCULATE SHARE COUNT MECHANICS CORRECTLY:
+
+Start with pre-IPO fully diluted shares (ALWAYS preserve these)
+
+Calculate new shares needed for primary raise at various price points
+
+Calculate shares sold in secondary offering
+
+Apply greenshoe percentage to total offering (primary + secondary)
+
+Calculate post-IPO fully diluted shares correctly: pre-IPO shares + new primary shares + greenshoe shares
+
+NEVER set pre-IPO shares to zero or lose them
+
+CALCULATE POST-IPO OWNERSHIP:
+
+For each pre-IPO shareholder: (their shares ÷ post-IPO fully diluted shares) × 100%
+
+For founders: calculate both economic ownership AND voting power (if dual-class shares exist)
+
+Flag if ownership falls below required control threshold
+
+CALCULATE POST-IPO FINANCIAL POSITION:
+
+Post-IPO cash = pre-IPO cash + primary raise + greenshoe proceeds (secondary sale money goes to selling shareholders, NOT company)
+
+Post-IPO debt = pre-IPO debt (unless IPO proceeds pay down debt)
+
+Enterprise Value = Market Cap + Debt - Cash
+
+DETERMINE OFFER PRICE RANGE:
+
+Start with fair value per share from valuation
+
+Apply appropriate discount (10-30%) depending on market conditions and risk
+
+Create 3 price points: low, mid, high (each ~10% apart)
+
+Ensure the mid-point raises the required primary amount
+
+CALCULATE KEY METRICS AT EACH PRICE POINT:
+
+Market capitalization
+
+Enterprise value
+
+Implied valuation multiple (EV/Revenue or EV/EBITDA) vs. comparables
+
+Dilution percentage
+
+Founder ownership percentage
+
+Implied value per key metric (per user, per patient, per subscriber if relevant)
+
+ANALYZE OFFERING DYNAMICS:
+
+Calculate expected demand (oversubscription) at each price point
+
+Estimate day-one price pop (5-25%) based on discount to fair value
+
+Consider market conditions and sector sentiment
+
+GENERATE COMPREHENSIVE OUTPUT WITH THESE EXACT SECTIONS:
+
+WARNINGS: Any critical issues (low ownership, high risk, etc.)
+
+RECOMMENDED OFFER PRICE and PRICE RANGE
+
+SHARE ISSUANCE DETAIL: All share counts and ownership percentages
+
+PROCEEDS CALCULATION: Who gets what money
+
+VALUATION MECHANICS: Key valuation metrics and methodology
+
+PRICING MATRIX: Side-by-side comparison of low/mid/high prices
+
+RECOMMENDATION RATIONALE: Clear explanation of why this price
+
+HANDLE SPECIAL CASES:
+
+Dual-class shares: Calculate voting power separately from economic ownership
+
+Milestone payments: Treat as contingent liabilities in valuation
+
+Binary events (FDA approval): Apply probability-adjusted discount
+
+Lock-up periods: Note their impact on float and trading
+
+Anchor investors/PIPE: Note their participation and impact
+
+VALIDATE ALL CALCULATIONS:
+
+Check that share counts add up correctly
+
+Verify that cash proceeds are allocated correctly (company vs. sellers)
+
+Ensure valuation methodologies match company type
+
+Confirm that ownership percentages never exceed 100% and founders never show 0%
+
+Testing Requirements: The function must work correctly for:
+
+A high-growth space tech company with negative EBITDA
+
+A pre-revenue biotech with FDA approval risk
+
+A profitable manufacturing company going public
+
+A founder-controlled company with dual-class shares
+
+VERY IMPORTANT: After building this function, I will test it with actual IPO scenarios. It must handle all the tasks above correctly. If any calculation is wrong (especially share counts or ownership percentages), I will need to rebuild it.

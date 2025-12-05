@@ -178,7 +178,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
   
   // Finance Panel State
-  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | null>(null);
+  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | "ipo" | null>(null);
   const [financeInputText, setFinanceInputText] = useState("");
   const [financeCustomInstructions, setFinanceCustomInstructions] = useState("");
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -571,7 +571,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Finance Panel Handler - Two-step flow: Parse & Preview, then Download
-  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement") => {
+  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement" | "ipo") => {
     if (!financeInputText.trim()) {
       toast({
         title: "No Input",
@@ -586,11 +586,11 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
     setFinanceResult(null);
 
     const providerNames: Record<string, string> = {
-      'zhi1': 'OpenAI GPT-4',
-      'zhi2': 'Anthropic Claude',
-      'zhi3': 'DeepSeek',
-      'zhi4': 'Perplexity',
-      'zhi5': 'Grok'
+      'zhi1': 'ZHI 1',
+      'zhi2': 'ZHI 2',
+      'zhi3': 'ZHI 3',
+      'zhi4': 'ZHI 4',
+      'zhi5': 'ZHI 5'
     };
 
     try {
@@ -694,6 +694,31 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
           title: "3-Statement Model Complete",
           description: `Financial projections for ${result.assumptions?.companyName || 'company'} with ${result.summary?.isBalanced ? 'balanced' : 'unbalanced'} balance sheet`,
         });
+      } else if (modelType === "ipo") {
+        setFinanceLoadingPhase(`Parsing IPO with ${providerNames[financeLLMProvider]}...`);
+        
+        const response = await fetch('/api/finance/parse-ipo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: financeInputText,
+            customInstructions: financeCustomInstructions,
+            llmProvider: financeLLMProvider,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'IPO parsing failed');
+        }
+
+        const result = await response.json();
+        setFinanceResult(result);
+        
+        toast({
+          title: "IPO Pricing Complete",
+          description: `Recommended offer price: $${result.recommendedOfferPrice?.toFixed(2) || 'N/A'} for ${result.companyName || 'company'}`,
+        });
       } else {
         toast({
           title: "Coming Soon",
@@ -740,9 +765,14 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
       } else if (financeModelType === "threestatement") {
         endpoint = '/api/finance/download-3statement';
         modelLabel = '3-Statement';
+      } else if (financeModelType === "ipo") {
+        endpoint = '/api/finance/download-ipo';
+        modelLabel = 'IPO_Pricing';
       }
       
       const requestBody = financeModelType === "threestatement" 
+        ? { result: financeResult }
+        : financeModelType === "ipo"
         ? { result: financeResult }
         : { assumptions: financeResult.assumptions };
       
@@ -2793,8 +2823,8 @@ Examples:
             </p>
           </div>
 
-          {/* Four Model Type Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* Five Model Type Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <Button
               onClick={() => {
                 setShowFinanceCustomization(prev => financeModelType === "dcf" ? !prev : true);
@@ -2866,6 +2896,24 @@ Examples:
               <span className="font-bold text-lg">3-Statement</span>
               <span className="text-xs mt-1 text-center opacity-80">Integrated Financials</span>
             </Button>
+
+            <Button
+              onClick={() => {
+                setShowFinanceCustomization(prev => financeModelType === "ipo" ? !prev : true);
+                setFinanceModelType("ipo");
+              }}
+              className={`flex flex-col items-center justify-center p-6 h-auto ${
+                financeModelType === "ipo" 
+                  ? "bg-cyan-600 hover:bg-cyan-700 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-2 border-cyan-300"
+              }`}
+              disabled={financeLoading}
+              data-testid="button-ipo-model"
+            >
+              <TrendingUp className="w-6 h-6 mb-2" />
+              <span className="font-bold text-lg">IPO Pricing</span>
+              <span className="text-xs mt-1 text-center opacity-80">Public Offering</span>
+            </Button>
           </div>
 
           {/* Customization Panel - Appears when model type is selected */}
@@ -2876,6 +2924,7 @@ Examples:
                 {financeModelType === "lbo" && "LBO Model Customization"}
                 {financeModelType === "ma" && "M&A Model Customization"}
                 {financeModelType === "threestatement" && "3-Statement Model Customization"}
+                {financeModelType === "ipo" && "IPO Pricing Customization"}
               </h3>
 
               {/* LLM Provider Selector */}
@@ -2914,6 +2963,8 @@ Examples:
                       ? "Add specific instructions for LBO model... (e.g., 'Model 5-year hold period', 'Include management equity rollover', 'Target 3x MOIC')"
                       : financeModelType === "ma"
                       ? "Add specific instructions for M&A model... (e.g., 'Model accretion/dilution analysis', 'Include synergy assumptions', 'Compare cash vs stock deal')"
+                      : financeModelType === "ipo"
+                      ? "Add specific instructions for IPO pricing... (e.g., 'Use 20% IPO discount', 'Assume dual-class shares with 10:1 voting', 'Include greenshoe at 15%', 'Founder minimum ownership 30%')"
                       : "Add specific instructions for 3-statement model... (e.g., 'Include quarterly breakdown', 'Add working capital schedule', 'Model debt covenants')"
                   }
                   className="min-h-[100px]"
@@ -4012,6 +4063,258 @@ Examples:
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* IPO Pricing Results Display */}
+          {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.companyInfo && (
+            <div className="mb-6 space-y-6">
+              {/* Header with company name and download button */}
+              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
+                <div>
+                  <h3 className="text-xl font-bold text-cyan-900 dark:text-cyan-100">
+                    {financeResult.companyInfo?.companyName} - IPO Pricing Analysis
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {financeResult.companyInfo?.industry} | {financeResult.companyInfo?.companyType} Company | Analyzed by {financeResult.providerUsed}
+                  </p>
+                </div>
+                <Button
+                  onClick={handleFinanceDownloadExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={financeDownloadLoading}
+                  data-testid="button-download-ipo-excel"
+                >
+                  {financeDownloadLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download IPO Model Excel
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* IPO Pricing Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg border border-cyan-200 dark:border-cyan-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Offer Price Range</div>
+                  <div className="text-xl font-bold text-cyan-700 dark:text-cyan-300">
+                    ${financeResult.pricingMatrix?.lowPrice?.toFixed(2)} - ${financeResult.pricingMatrix?.highPrice?.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Midpoint: ${financeResult.pricingMatrix?.midPrice?.toFixed(2)}
+                  </div>
+                </div>
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Gross Proceeds</div>
+                  <div className="text-xl font-bold text-green-700 dark:text-green-300">
+                    ${((financeResult.proceedsAnalysis?.grossProceeds || 0) / 1000000).toFixed(0)}M
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Net: ${((financeResult.proceedsAnalysis?.netProceeds || 0) / 1000000).toFixed(0)}M
+                  </div>
+                </div>
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Pre-Money Valuation</div>
+                  <div className="text-xl font-bold text-purple-700 dark:text-purple-300">
+                    ${((financeResult.valuationAnalysis?.preMoneyValuation || 0) / 1000000000).toFixed(2)}B
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Post-Money: ${((financeResult.valuationAnalysis?.postMoneyValuation || 0) / 1000000000).toFixed(2)}B
+                  </div>
+                </div>
+                <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-700 text-center">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Shares Offered</div>
+                  <div className="text-xl font-bold text-orange-700 dark:text-orange-300">
+                    {((financeResult.offerStructure?.primarySharesOffered || 0) / 1000000).toFixed(1)}M
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    Float: {((financeResult.capTable?.publicFloat || 0) * 100).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Valuation Multiples */}
+              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
+                <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Valuation Multiples Analysis
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {financeResult.valuationAnalysis?.revenueMultiple && (
+                    <div className="text-center p-3 bg-cyan-50/50 dark:bg-cyan-900/10 rounded-lg">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">EV/Revenue</div>
+                      <div className="text-2xl font-bold text-cyan-700 dark:text-cyan-300">
+                        {financeResult.valuationAnalysis.revenueMultiple.toFixed(1)}x
+                      </div>
+                    </div>
+                  )}
+                  {financeResult.valuationAnalysis?.ebitdaMultiple && (
+                    <div className="text-center p-3 bg-purple-50/50 dark:bg-purple-900/10 rounded-lg">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">EV/EBITDA</div>
+                      <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                        {financeResult.valuationAnalysis.ebitdaMultiple.toFixed(1)}x
+                      </div>
+                    </div>
+                  )}
+                  {financeResult.valuationAnalysis?.peRatio && (
+                    <div className="text-center p-3 bg-green-50/50 dark:bg-green-900/10 rounded-lg">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">P/E Ratio</div>
+                      <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                        {financeResult.valuationAnalysis.peRatio.toFixed(1)}x
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-center p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-lg">
+                    <div className="text-xs text-gray-600 dark:text-gray-400">IPO Discount</div>
+                    <div className="text-2xl font-bold text-orange-700 dark:text-orange-300">
+                      {((financeResult.pricingMatrix?.ipoDiscount || 0) * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cap Table Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
+                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
+                    Cap Table - Pre vs Post IPO
+                  </h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-600">
+                        <th className="text-left py-2 text-gray-600 dark:text-gray-400">Metric</th>
+                        <th className="text-right py-2 text-gray-600 dark:text-gray-400">Pre-IPO</th>
+                        <th className="text-right py-2 text-gray-600 dark:text-gray-400">Post-IPO</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-gray-100 dark:border-gray-700">
+                        <td className="py-2 text-gray-700 dark:text-gray-300">Total Shares</td>
+                        <td className="text-right text-gray-900 dark:text-gray-100">
+                          {((financeResult.capTable?.preIpoShares || 0) / 1000000).toFixed(1)}M
+                        </td>
+                        <td className="text-right font-semibold text-cyan-700 dark:text-cyan-300">
+                          {((financeResult.capTable?.postIpoShares || 0) / 1000000).toFixed(1)}M
+                        </td>
+                      </tr>
+                      <tr className="border-b border-gray-100 dark:border-gray-700">
+                        <td className="py-2 text-gray-700 dark:text-gray-300">Founder Ownership</td>
+                        <td className="text-right text-gray-900 dark:text-gray-100">
+                          {((financeResult.capTable?.founderOwnershipPreIpo || 0) * 100).toFixed(1)}%
+                        </td>
+                        <td className="text-right text-cyan-700 dark:text-cyan-300">
+                          {((financeResult.capTable?.founderOwnershipPostIpo || 0) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                      <tr className="border-b border-gray-100 dark:border-gray-700">
+                        <td className="py-2 text-gray-700 dark:text-gray-300">VC/Investor Ownership</td>
+                        <td className="text-right text-gray-900 dark:text-gray-100">
+                          {((financeResult.capTable?.vcOwnershipPreIpo || 0) * 100).toFixed(1)}%
+                        </td>
+                        <td className="text-right text-purple-700 dark:text-purple-300">
+                          {((financeResult.capTable?.vcOwnershipPostIpo || 0) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-gray-700 dark:text-gray-300 font-semibold">Public Float</td>
+                        <td className="text-right text-gray-400">-</td>
+                        <td className="text-right font-bold text-green-700 dark:text-green-300">
+                          {((financeResult.capTable?.publicFloat || 0) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700">
+                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
+                    Transaction Fees & Proceeds
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Gross Proceeds</span>
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                        ${((financeResult.proceedsAnalysis?.grossProceeds || 0) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Underwriting Fee ({((financeResult.proceedsAnalysis?.underwritingFeePercent || 0) * 100).toFixed(1)}%)</span>
+                      <span className="text-red-600 dark:text-red-400">
+                        -${((financeResult.proceedsAnalysis?.underwritingFee || 0) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Legal & Advisory</span>
+                      <span className="text-red-600 dark:text-red-400">
+                        -${((financeResult.proceedsAnalysis?.legalFees || 0) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-2">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">Net Proceeds</span>
+                      <span className="font-bold text-green-700 dark:text-green-300">
+                        ${((financeResult.proceedsAnalysis?.netProceeds || 0) / 1000000).toFixed(1)}M
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Comparable Companies */}
+              {financeResult.comparableCompanies && financeResult.comparableCompanies.length > 0 && (
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-cyan-200 dark:border-cyan-700 overflow-x-auto">
+                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-4">
+                    Comparable Public Companies
+                  </h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-600">
+                        <th className="text-left py-2 px-3 text-gray-600 dark:text-gray-400">Company</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">Mkt Cap ($B)</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">EV/Revenue</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">EV/EBITDA</th>
+                        <th className="text-right py-2 px-3 text-gray-600 dark:text-gray-400">P/E</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {financeResult.comparableCompanies.map((comp: any, idx: number) => (
+                        <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
+                          <td className="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{comp.name}</td>
+                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
+                            ${(comp.marketCap / 1000000000).toFixed(1)}B
+                          </td>
+                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
+                            {comp.evRevenue?.toFixed(1)}x
+                          </td>
+                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
+                            {comp.evEbitda?.toFixed(1)}x
+                          </td>
+                          <td className="text-right py-2 px-3 text-gray-700 dark:text-gray-300">
+                            {comp.peRatio?.toFixed(1)}x
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Executive Summary */}
+              {financeResult.executiveSummary && (
+                <div className="p-4 bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 rounded-lg border border-cyan-200 dark:border-cyan-700">
+                  <h4 className="text-lg font-semibold text-cyan-800 dark:text-cyan-200 mb-3">
+                    Executive Summary
+                  </h4>
+                  <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line">
+                    {financeResult.executiveSummary}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
