@@ -5413,6 +5413,20 @@ Examples:
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Evaluate logical, scientific, thematic, instructional, or motivational coherence - then get rewrites that maximize it
             </p>
+            {/* Clear All Button */}
+            <div className="mt-4">
+              <Button
+                onClick={handleCoherenceClear}
+                variant="outline"
+                size="sm"
+                className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                disabled={coherenceLoading}
+                data-testid="button-coherence-clear-all"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear Coherence Panel
+              </Button>
+            </div>
           </div>
 
           {/* Input Area */}
