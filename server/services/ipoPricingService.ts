@@ -863,8 +863,23 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
       derivedMidpoint = impliedEquity / sharesOutstandingPreIPO;
       priceRangeSource = `derived from peer EV/EBITDA multiple (${peerMedianEVEBITDA.toFixed(1)}×)`;
     }
-    // Method 4: Use peer EV/Rev multiple if revenue company (fallback for non-restaurant)
+    // Method 4: Use peer EV/Rev multiple if revenue company
+    // HARD GUARD: Do NOT use EV/Revenue for restaurant/consumer sectors - they REQUIRE EV/EBITDA
     else if (!derivedMidpoint && peerMedianEVRevenue > 0 && ntmRevenue > 0 && sharesOutstandingPreIPO > 0) {
+      if (useEVEBITDAValuation) {
+        // Restaurant/consumer sector should use EV/EBITDA, not EV/Revenue - return error
+        const errorWarning = `ERROR: ${sector || 'Consumer'} sector detected - EV/EBITDA valuation required but inputs missing. Please provide: (1) ntmEBITDA (or ntmRevenue + ntmEBITDAMargin), AND (2) peerMedianEVEBITDA. EV/Revenue is not appropriate for this sector.`;
+        return {
+          assumptions,
+          pricingMatrix: [],
+          recommendedRangeLow: 0,
+          recommendedRangeHigh: 0,
+          recommendedPrice: 0,
+          rationale: [],
+          warnings: [errorWarning],
+          memoText: `IPO PRICING ERROR\n\n${errorWarning}`,
+        };
+      }
       // Implied EV = Rev * Multiple, then price = EV / shares (rough approximation)
       const impliedEV = ntmRevenue * peerMedianEVRevenue;
       derivedMidpoint = impliedEV / sharesOutstandingPreIPO;
