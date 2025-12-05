@@ -185,7 +185,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [financeLoadingPhase, setFinanceLoadingPhase] = useState<string>("");
   const [financeResult, setFinanceResult] = useState<any>(null);
   const [showFinanceCustomization, setShowFinanceCustomization] = useState(false);
-  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi2");
+  const [financeLLMProvider, setFinanceLLMProvider] = useState<"zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5">("zhi5");
   const [financeDownloadLoading, setFinanceDownloadLoading] = useState(false);
   
   // Data Science Panel State
@@ -709,28 +709,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
 
         if (!response.ok) {
           const errorData = await response.json();
-          // Check if this is a missing data error with sample input
-          if (errorData.missingData && errorData.sampleInput) {
-            // Set result with error message and sample for display
-            setFinanceResult({
-              success: false,
-              missingData: true,
-              memoText: `MISSING REQUIRED DATA\n\n${errorData.message}\n\nREQUIRED INPUTS (provide at least one):\n${errorData.requiredInputs?.map((r: string) => `• ${r}`).join('\n')}\n\n${errorData.sampleInput}`,
-              providerUsed: errorData.providerUsed,
-              recommendedPrice: 0,
-              recommendedRangeLow: 0,
-              recommendedRangeHigh: 0,
-              pricingMatrix: [],
-              rationale: [],
-              assumptions: { companyName: 'Unknown' }
-            });
-            toast({
-              title: "Missing Valuation Data",
-              description: "Your input needs pricing data like fair value, price range, or raise amount. See the recommendation panel for a sample.",
-              variant: "destructive",
-            });
-            return;
-          }
           throw new Error(errorData.message || 'IPO pricing failed');
         }
 
@@ -2793,6 +2771,53 @@ Generated on: ${new Date().toLocaleString()}`;
             />
           </div>
 
+          {/* AI Model Selection - Always Visible */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mb-6">
+            <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
+              AI Model Selection
+            </label>
+            <Select value={financeLLMProvider} onValueChange={(value: "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5") => setFinanceLLMProvider(value)}>
+              <SelectTrigger className="w-full max-w-xs" data-testid="select-finance-llm-main">
+                <SelectValue placeholder="Select AI Model" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zhi5">ZHI 5 - Default</SelectItem>
+                <SelectItem value="zhi1">ZHI 1</SelectItem>
+                <SelectItem value="zhi2">ZHI 2</SelectItem>
+                <SelectItem value="zhi3">ZHI 3</SelectItem>
+                <SelectItem value="zhi4">ZHI 4</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Choose which AI model will analyze your financial data and generate the Excel model.
+            </p>
+          </div>
+
+          {/* Custom Instructions */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700 mb-6">
+            <label className="block text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
+              Custom Instructions (Optional)
+            </label>
+            <Textarea
+              value={financeCustomInstructions}
+              onChange={(e) => setFinanceCustomInstructions(e.target.value)}
+              placeholder="Add any special requirements for the financial model...
+
+Examples:
+- Use a 7-year projection period instead of 5
+- Add a sensitivity analysis on revenue growth
+- Include quarterly breakdown for Year 1
+- Use different WACC for each scenario
+- Add specific industry comparables"
+              className="min-h-[100px] text-sm"
+              disabled={financeLoading}
+              data-testid="textarea-finance-custom-instructions"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Specify additional analysis, formatting preferences, or special calculations
+            </p>
+          </div>
+
           {/* Five Model Type Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <Button
@@ -2907,11 +2932,11 @@ Generated on: ${new Date().toLocaleString()}`;
                     <SelectValue placeholder="Select AI Model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zhi2" data-testid="select-item-zhi2">ZHI 2 - Default</SelectItem>
+                    <SelectItem value="zhi5" data-testid="select-item-zhi5">ZHI 5 - Default</SelectItem>
                     <SelectItem value="zhi1" data-testid="select-item-zhi1">ZHI 1</SelectItem>
+                    <SelectItem value="zhi2" data-testid="select-item-zhi2">ZHI 2</SelectItem>
                     <SelectItem value="zhi3" data-testid="select-item-zhi3">ZHI 3</SelectItem>
                     <SelectItem value="zhi4" data-testid="select-item-zhi4">ZHI 4</SelectItem>
-                    <SelectItem value="zhi5" data-testid="select-item-zhi5">ZHI 5</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
