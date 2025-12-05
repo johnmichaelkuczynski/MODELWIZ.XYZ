@@ -17,7 +17,6 @@ import { parseFinancialDescription, generateDCFExcel } from "./services/dcfModel
 import { parseLBODescription, calculateLBOReturns, generateLBOExcel } from "./services/lboModelService";
 import { parseMADescription, calculateMAMetrics, generateMAExcel } from "./services/maModelService";
 import { parseThreeStatementDescription, calculateThreeStatementModel, generateThreeStatementExcel } from "./services/threeStatementModelService";
-import { parseIPODescription, calculateIPOPricing } from "./services/ipoPricingService";
 import { parseRegressionDescription, generateRegressionPythonCode } from "./services/regressionModelService";
 import { parseForecastingDescription, generateForecastingPythonCode } from "./services/forecastingModelService";
 import { parsePredictiveDescription } from "./services/predictiveAnalyticsService";
@@ -3611,49 +3610,6 @@ Be extremely strict - reject any approximations, generalizations, or unqualified
       res.status(500).json({
         success: false,
         message: error.message || "Failed to generate Excel file"
-      });
-    }
-  });
-
-  // Finance Panel - Parse IPO description and return pricing recommendation memo
-  app.post("/api/finance/parse-ipo", async (req: Request, res: Response) => {
-    try {
-      const { description, customInstructions, llmProvider = "zhi5" } = req.body;
-
-      if (!description) {
-        return res.status(400).json({
-          success: false,
-          message: "IPO description is required"
-        });
-      }
-
-      console.log(`Parsing IPO description with ${llmProvider}...`);
-      const { assumptions, providerUsed } = await parseIPODescription(
-        description,
-        llmProvider as "zhi1" | "zhi2" | "zhi3" | "zhi4" | "zhi5",
-        customInstructions
-      );
-
-      console.log("Calculating IPO pricing matrix...");
-      const results = calculateIPOPricing(assumptions);
-
-      res.json({
-        success: true,
-        assumptions: results.assumptions,
-        pricingMatrix: results.pricingMatrix,
-        recommendedRangeLow: results.recommendedRangeLow,
-        recommendedRangeHigh: results.recommendedRangeHigh,
-        recommendedPrice: results.recommendedPrice,
-        rationale: results.rationale,
-        memoText: results.memoText,
-        providerUsed
-      });
-
-    } catch (error: any) {
-      console.error("IPO pricing error:", error);
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to generate IPO pricing recommendation"
       });
     }
   });

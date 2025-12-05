@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank, LineChart, FileCode, Search, Copy } from "lucide-react";
+import { Brain, Trash2, FileEdit, Loader2, Zap, Clock, Sparkles, Download, Shield, RefreshCw, Upload, FileText, BookOpen, BarChart3, AlertCircle, TrendingUp, Calculator, DollarSign, FileSpreadsheet, PiggyBank, LineChart, FileCode, Search } from "lucide-react";
 import { analyzeDocument, compareDocuments, checkForAI } from "@/lib/analysis";
 import { AnalysisMode, DocumentInput as DocumentInputType, AIDetectionResult, DocumentAnalysis, DocumentComparison } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -178,7 +178,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   const [coherenceStageProgress, setCoherenceStageProgress] = useState<string>("");
   
   // Finance Panel State
-  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | "ipo" | null>(null);
+  const [financeModelType, setFinanceModelType] = useState<"dcf" | "lbo" | "ma" | "threestatement" | null>(null);
   const [financeInputText, setFinanceInputText] = useState("");
   const [financeCustomInstructions, setFinanceCustomInstructions] = useState("");
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -571,7 +571,7 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
   };
 
   // Finance Panel Handler - Two-step flow: Parse & Preview, then Download
-  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement" | "ipo") => {
+  const handleFinanceModelGenerate = async (modelType: "dcf" | "lbo" | "ma" | "threestatement") => {
     if (!financeInputText.trim()) {
       toast({
         title: "No Input",
@@ -693,31 +693,6 @@ DOES THE AUTHOR USE OTHER AUTHORS TO DEVELOP HIS IDEAS OR TO CLOAK HIS OWN LACK 
         toast({
           title: "3-Statement Model Complete",
           description: `Financial projections for ${result.assumptions?.companyName || 'company'} with ${result.summary?.isBalanced ? 'balanced' : 'unbalanced'} balance sheet`,
-        });
-      } else if (modelType === "ipo") {
-        setFinanceLoadingPhase(`Generating IPO Pricing with ${providerNames[financeLLMProvider]}...`);
-        
-        const response = await fetch('/api/finance/parse-ipo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            description: financeInputText,
-            customInstructions: financeCustomInstructions,
-            llmProvider: financeLLMProvider,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'IPO pricing failed');
-        }
-
-        const result = await response.json();
-        setFinanceResult(result);
-        
-        toast({
-          title: "IPO Pricing Complete",
-          description: `Pricing recommendation generated for ${result.assumptions?.companyName || 'company'}`,
         });
       } else {
         toast({
@@ -2818,8 +2793,8 @@ Examples:
             </p>
           </div>
 
-          {/* Five Model Type Buttons */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Four Model Type Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Button
               onClick={() => {
                 setShowFinanceCustomization(prev => financeModelType === "dcf" ? !prev : true);
@@ -2891,24 +2866,6 @@ Examples:
               <span className="font-bold text-lg">3-Statement</span>
               <span className="text-xs mt-1 text-center opacity-80">Integrated Financials</span>
             </Button>
-
-            <Button
-              onClick={() => {
-                setShowFinanceCustomization(prev => financeModelType === "ipo" ? !prev : true);
-                setFinanceModelType("ipo");
-              }}
-              className={`flex flex-col items-center justify-center p-6 h-auto ${
-                financeModelType === "ipo" 
-                  ? "bg-teal-600 hover:bg-teal-700 text-white" 
-                  : "bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-900/20 text-teal-700 dark:text-teal-300 border-2 border-teal-300"
-              }`}
-              disabled={financeLoading}
-              data-testid="button-ipo-model"
-            >
-              <TrendingUp className="w-6 h-6 mb-2" />
-              <span className="font-bold text-lg">IPO Pricing</span>
-              <span className="text-xs mt-1 text-center opacity-80">Pricing Recommendation</span>
-            </Button>
           </div>
 
           {/* Customization Panel - Appears when model type is selected */}
@@ -2919,7 +2876,6 @@ Examples:
                 {financeModelType === "lbo" && "LBO Model Customization"}
                 {financeModelType === "ma" && "M&A Model Customization"}
                 {financeModelType === "threestatement" && "3-Statement Model Customization"}
-                {financeModelType === "ipo" && "IPO Pricing Customization"}
               </h3>
 
               {/* LLM Provider Selector */}
@@ -2958,8 +2914,6 @@ Examples:
                       ? "Add specific instructions for LBO model... (e.g., 'Model 5-year hold period', 'Include management equity rollover', 'Target 3x MOIC')"
                       : financeModelType === "ma"
                       ? "Add specific instructions for M&A model... (e.g., 'Model accretion/dilution analysis', 'Include synergy assumptions', 'Compare cash vs stock deal')"
-                      : financeModelType === "ipo"
-                      ? "Add specific instructions for IPO pricing... (e.g., 'Target 15-20% first-day pop', 'Prioritize institutional allocation', 'Compare to recent tech IPOs')"
                       : "Add specific instructions for 3-statement model... (e.g., 'Include quarterly breakdown', 'Add working capital schedule', 'Model debt covenants')"
                   }
                   className="min-h-[100px]"
@@ -4058,97 +4012,6 @@ Examples:
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* IPO Pricing Results Display */}
-          {financeResult && financeResult.success && financeModelType === "ipo" && financeResult.memoText && (
-            <div className="mb-6 space-y-6">
-              {/* Header with company name and copy button */}
-              <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
-                <div>
-                  <h3 className="text-xl font-bold text-teal-900 dark:text-teal-100">
-                    {financeResult.assumptions?.companyName} - IPO Pricing Recommendation
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Generated by {financeResult.providerUsed}
-                  </p>
-                </div>
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(financeResult.memoText);
-                    toast({
-                      title: "Copied!",
-                      description: "IPO pricing memo copied to clipboard",
-                    });
-                  }}
-                  className="bg-teal-600 hover:bg-teal-700 text-white"
-                  data-testid="button-copy-ipo-memo"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Memo
-                </Button>
-              </div>
-
-              {/* Key Metrics Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-200 dark:border-teal-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Recommended Price</div>
-                  <div className="text-2xl font-bold text-teal-700 dark:text-teal-300">
-                    ${financeResult.recommendedPrice?.toFixed(2)}
-                  </div>
-                </div>
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Filing Range</div>
-                  <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
-                    ${financeResult.recommendedRangeLow?.toFixed(0)} - ${financeResult.recommendedRangeHigh?.toFixed(0)}
-                  </div>
-                </div>
-                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">DCF Support</div>
-                  <div className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                    ${financeResult.assumptions?.dcfValuePerShare?.toFixed(2)}
-                  </div>
-                </div>
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 text-center">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Peer Median EV/Rev</div>
-                  <div className="text-2xl font-bold text-green-700 dark:text-green-300">
-                    {financeResult.assumptions?.peerMedianEVRevenue?.toFixed(1)}x
-                  </div>
-                </div>
-              </div>
-
-              {/* Formatted Memo Output */}
-              <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-teal-200 dark:border-teal-700">
-                <h4 className="text-lg font-semibold text-teal-800 dark:text-teal-200 mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Final Pricing Recommendation
-                </h4>
-                <pre 
-                  className="whitespace-pre-wrap font-mono text-sm text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto"
-                  data-testid="text-ipo-memo"
-                >
-                  {financeResult.memoText}
-                </pre>
-              </div>
-
-              {/* Recommendation Rationale */}
-              {financeResult.rationale && financeResult.rationale.length > 0 && (
-                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-700">
-                  <h4 className="font-semibold text-amber-800 dark:text-amber-200 mb-3 flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5" />
-                    Recommendation Rationale
-                  </h4>
-                  <ul className="space-y-2">
-                    {financeResult.rationale.map((r: string, idx: number) => (
-                      <li key={idx} className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
-                        <span className="text-amber-600 dark:text-amber-400 mt-1">-</span>
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
 
