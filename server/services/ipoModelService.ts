@@ -230,23 +230,44 @@ export async function parseIPODescription(
   
   const parsed = JSON.parse(jsonStr.trim());
   
-  // Apply defaults
+  // Normalize values to millions - LLM may return in raw dollars instead of millions
+  // If a dollar value is > 10,000, assume it's in raw dollars and convert to millions
+  const normalizeToMillions = (val: number | undefined, fieldName: string): number | undefined => {
+    if (val === undefined || val === null) return undefined;
+    if (val > 10000) {
+      console.log(`[IPO Parser] Normalizing ${fieldName}: ${val} -> ${val / 1000000}M (detected raw dollar value)`);
+      return val / 1000000;
+    }
+    return val;
+  };
+  
+  // Normalize share counts - if > 1000, likely in raw shares instead of millions
+  const normalizeShares = (val: number | undefined, fieldName: string): number | undefined => {
+    if (val === undefined || val === null) return undefined;
+    if (val > 1000) {
+      console.log(`[IPO Parser] Normalizing ${fieldName}: ${val} -> ${val / 1000000}M (detected raw share count)`);
+      return val / 1000000;
+    }
+    return val;
+  };
+  
+  // Apply defaults with normalization
   return {
     companyName: parsed.companyName || 'Target Company',
     transactionDate: parsed.transactionDate || new Date().toISOString().split('T')[0],
-    ltmRevenue: parsed.ltmRevenue,
-    ltmEbitda: parsed.ltmEbitda || undefined,
+    ltmRevenue: normalizeToMillions(parsed.ltmRevenue, 'ltmRevenue') || 0,
+    ltmEbitda: normalizeToMillions(parsed.ltmEbitda, 'ltmEbitda'),
     industryRevenueMultiple: parsed.industryRevenueMultiple,
     industryEbitdaMultiple: parsed.industryEbitdaMultiple || undefined,
-    preIpoShares: parsed.preIpoShares,
-    primaryRaiseTarget: parsed.primaryRaiseTarget,
+    preIpoShares: normalizeShares(parsed.preIpoShares, 'preIpoShares') || 0,
+    primaryRaiseTarget: normalizeToMillions(parsed.primaryRaiseTarget, 'primaryRaiseTarget') || 0,
     ipoDiscount: parsed.ipoDiscount || 0.20,
-    secondaryShares: parsed.secondaryShares || 0,
+    secondaryShares: normalizeShares(parsed.secondaryShares, 'secondaryShares') || 0,
     greenshoePercent: parsed.greenshoePercent ?? 0.15,
     underwritingFeePercent: parsed.underwritingFeePercent ?? 0.07,
-    convertibleDebtAmount: parsed.convertibleDebtAmount || undefined,
+    convertibleDebtAmount: normalizeToMillions(parsed.convertibleDebtAmount, 'convertibleDebtAmount'),
     conversionTriggerPrice: parsed.conversionTriggerPrice || undefined,
-    conversionShares: parsed.conversionShares || undefined,
+    conversionShares: normalizeShares(parsed.conversionShares, 'conversionShares'),
     valuationMethod: parsed.valuationMethod || 'revenue',
     blendWeight: parsed.blendWeight ?? 0.5,
   };
