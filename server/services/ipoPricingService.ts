@@ -719,6 +719,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     sectorAverageFirstDayPop,
     historicalFirstDayPop,
     foundersEmployeesOwnership,
+    founderSharesExplicitM, // NEW: Explicit founder shares from cap table
     pricingAggressiveness,
     managementPriority,
     minAcceptablePrice,
@@ -1324,8 +1325,13 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): {
     // === FOUNDER OWNERSHIP - RECOMPUTED AT EACH PRICE POINT ===
     // Mechanical: founderShares / fdSharesPostIPO
     // Founder shares are fixed; FD shares change with primary+greenshoe at different prices
-    const founderSharesFixed = foundersEmployeesOwnership * sharesOutstandingPreIPO;
-    const founderOwnershipPost = founderSharesFixed / fdSharesPostIPO;
+    // 
+    // PRIORITY: Use explicit founder shares from cap table if provided (e.g., CEO 38M + CTO 22M = 60M)
+    // Otherwise, fall back to percentage-based calculation
+    const founderSharesFixed = founderSharesExplicitM && founderSharesExplicitM > 0
+      ? founderSharesExplicitM  // Use explicit share count from cap table parsing
+      : foundersEmployeesOwnership * sharesOutstandingPreIPO; // Fall back to percentage
+    const founderOwnershipPost = fdSharesPostIPO > 0 ? founderSharesFixed / fdSharesPostIPO : 0;
     
     // Generate warnings - ONLY based on user-provided data, no hardcoded thresholds
     // Fair value support - show whether pricing above or below fair value
