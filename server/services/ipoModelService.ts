@@ -1157,12 +1157,25 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     }
   }
   
-  const theoreticalPrice = (preMoneyValuation / adjustedPreIpoShares) * confidenceMultiplier;
-  console.log(`[IPO Model] Theoretical Price: $${preMoneyValuation}M / ${adjustedPreIpoShares}M shares${confidenceMultiplier > 1 ? ` × ${confidenceMultiplier.toFixed(4)}x` : ''} = $${theoreticalPrice.toFixed(2)}/share`);
-
-  // Apply Market Discount to get Offer Price
-  let offerPrice = theoreticalPrice * (1 - ipoDiscount);
-  console.log(`[IPO Model] Offer Price: $${theoreticalPrice.toFixed(2)} × (1 - ${(ipoDiscount*100).toFixed(0)}%) = $${offerPrice.toFixed(2)}/share`);
+  // FIX: Apply IPO discount to enterprise valuation FIRST, then convert to per-share
+  // "Move your IPO discount logic so it applies to enterprise valuation before converting to equity value or dividing by share count; never apply discounts to the per-share output."
+  
+  // Step 1: Calculate adjusted pre-money valuation (with confidence/demand multiplier)
+  const adjustedPreMoneyValuation = preMoneyValuation * confidenceMultiplier;
+  console.log(`[IPO Model] Adjusted Pre-Money: $${preMoneyValuation}M${confidenceMultiplier > 1 ? ` × ${confidenceMultiplier.toFixed(4)}x = $${adjustedPreMoneyValuation.toFixed(2)}M` : ''}`);
+  
+  // Step 2: Apply IPO discount to ENTERPRISE VALUATION (not per-share price)
+  const effectiveDiscount = Math.min(Math.max(ipoDiscount, 0), 0.5); // Cap at 50%
+  const discountedPreMoneyValuation = adjustedPreMoneyValuation * (1 - effectiveDiscount);
+  console.log(`[IPO Model] Discounted Pre-Money: $${adjustedPreMoneyValuation.toFixed(2)}M × (1 - ${(effectiveDiscount*100).toFixed(0)}%) = $${discountedPreMoneyValuation.toFixed(2)}M`);
+  
+  // Step 3: Theoretical price is UNDISCOUNTED (fair value)
+  const theoreticalPrice = adjustedPreMoneyValuation / adjustedPreIpoShares;
+  console.log(`[IPO Model] Theoretical Price (Undiscounted): $${adjustedPreMoneyValuation.toFixed(2)}M / ${adjustedPreIpoShares}M shares = $${theoreticalPrice.toFixed(2)}/share`);
+  
+  // Step 4: Offer price is derived from DISCOUNTED valuation
+  let offerPrice = discountedPreMoneyValuation / adjustedPreIpoShares;
+  console.log(`[IPO Model] Offer Price: $${discountedPreMoneyValuation.toFixed(2)}M / ${adjustedPreIpoShares}M shares = $${offerPrice.toFixed(2)}/share`);
 
   // Edge case: If conversion dilution pushed price below trigger, force just above
   if (conversionActivated && conversionTriggerPrice && offerPrice < conversionTriggerPrice) {
@@ -1932,13 +1945,18 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
   calcSheet.getCell('A1').style = headerStyle;
   calcSheet.getRow(1).height = 25;
   
+  // FIX: Corrected calculation steps to show discount applied to enterprise valuation first
+  const discountPercent = ((assumptions.ipoDiscount || 0.15) * 100).toFixed(0);
+  const discountedValuation = (result.preMoneyValuation || 0) * (1 - (assumptions.ipoDiscount || 0.15));
+  
   const calcSteps = [
     ['Step', 'Formula', 'Calculation', 'Result'],
     ['1. Pre-Money Valuation', 'LTM Revenue × Multiple', `$${assumptions.ltmRevenue || 0}M × ${assumptions.industryRevenueMultiple || 0}x`, `$${(result.preMoneyValuation || 0).toFixed(2)}M`],
-    ['2. Theoretical Price', 'Pre-Money / Pre-IPO Shares', `$${(result.preMoneyValuation || 0).toFixed(2)}M / ${assumptions.preIpoShares || 0}M`, `$${(result.theoreticalPrice || 0).toFixed(2)}`],
-    ['3. Apply IPO Discount', 'Theoretical × (1 - Discount)', `$${(result.theoreticalPrice || 0).toFixed(2)} × (1 - ${((assumptions.ipoDiscount || 0.15) * 100).toFixed(0)}%)`, `$${(result.offerPrice || 0).toFixed(2)}`],
-    ['4. New Shares to Issue', 'Primary Raise / Offer Price', `$${assumptions.primaryRaiseTarget || 0}M / $${(result.offerPrice || 0).toFixed(2)}`, `${((result.newSharesIssued || 0) * 1000000).toLocaleString()} shares`],
-    ['5. Post-Money Valuation', '(Price × Pre-IPO) + Raise', `($${(result.offerPrice || 0).toFixed(2)} × ${assumptions.preIpoShares || 0}M) + $${assumptions.primaryRaiseTarget || 0}M`, `$${(result.postMoneyValuation || 0).toFixed(2)}M`],
+    ['2. Apply IPO Discount', 'Pre-Money × (1 - Discount)', `$${(result.preMoneyValuation || 0).toFixed(2)}M × (1 - ${discountPercent}%)`, `$${discountedValuation.toFixed(2)}M`],
+    ['3. Theoretical Price', 'Pre-Money / Pre-IPO Shares', `$${(result.preMoneyValuation || 0).toFixed(2)}M / ${assumptions.preIpoShares || 0}M`, `$${(result.theoreticalPrice || 0).toFixed(2)} (undiscounted)`],
+    ['4. Offer Price', 'Discounted Pre-Money / Shares', `$${discountedValuation.toFixed(2)}M / ${assumptions.preIpoShares || 0}M`, `$${(result.offerPrice || 0).toFixed(2)}`],
+    ['5. New Shares to Issue', 'Primary Raise / Offer Price', `$${assumptions.primaryRaiseTarget || 0}M / $${(result.offerPrice || 0).toFixed(2)}`, `${((result.newSharesIssued || 0) * 1000000).toLocaleString()} shares`],
+    ['6. Post-Money Valuation', '(Price × Pre-IPO) + Raise', `($${(result.offerPrice || 0).toFixed(2)} × ${assumptions.preIpoShares || 0}M) + $${assumptions.primaryRaiseTarget || 0}M`, `$${(result.postMoneyValuation || 0).toFixed(2)}M`],
   ];
   
   row = 3;
