@@ -5302,10 +5302,23 @@ Examples:
       <div className="mt-16 bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-900/10 dark:to-blue-900/10 p-8 rounded-lg border-2 border-indigo-200 dark:border-indigo-700">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-indigo-900 dark:text-indigo-100 mb-3 flex items-center justify-center gap-3">
-              <BarChart3 className="w-8 h-8 text-indigo-600" />
-              Coherence Meter
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-24"></div>
+              <h2 className="text-3xl font-bold text-indigo-900 dark:text-indigo-100 flex items-center justify-center gap-3">
+                <BarChart3 className="w-8 h-8 text-indigo-600" />
+                Coherence Meter
+              </h2>
+              <Button
+                onClick={handleCoherenceClear}
+                variant="outline"
+                size="sm"
+                className="border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                data-testid="button-clear-coherence-top"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Clear All
+              </Button>
+            </div>
             <p className="text-lg text-gray-700 dark:text-gray-300 mb-2">
               Analyze and improve text coherence across multiple dimensions
             </p>
