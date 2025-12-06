@@ -31,21 +31,35 @@ The application uses a monorepo structure, separating client and server.
         - **Revenue Synergy Margin**: Applies flow-through margin (e.g., 50%) to revenue synergies for EBITDA impact. Default 100% if not specified.
         - **Interest Expense**: Properly calculated from debt schedule and included in pro forma projections.
         - Features separate phase-in schedules for revenue synergies (default: 0/50/100/100/100%) and cost synergies (default: 20/60/100/100/100%).
-      - **IPO Pricing Model**: Fully implemented (December 2024) with comprehensive pricing analysis:
-        - **Valuation Methods**: Revenue multiple (default), EBITDA multiple, or blended (weighted average)
+      - **IPO Pricing Model**: Fully implemented with comprehensive pricing analysis and **Enhanced Multi-Instrument Engine (December 2024)**:
+        - **Valuation Methods**: Revenue multiple (default), EBITDA multiple, or multi-proxy blended (weighted array of multiples)
         - **Pricing Calculation**: Pre-money valuation, theoretical share price, offer price with IPO discount
         - **Offer Structure**: Primary shares issued, secondary shares sold, greenshoe (over-allotment) option
         - **Proceeds Analysis**: Gross/net primary proceeds, secondary proceeds, underwriting fees
         - **Dilution Analysis**: Post-IPO shares outstanding, percentage sold, existing holder dilution
         - **Trading Metrics**: Market cap at offer, expected first-day pop
-        - **Excel Export**: 3-tab workbook (Summary, Assumptions, Calculation Steps) with full walkthrough
-        - **Formulas**: Pre-Money = LTM Revenue × Multiple; Theoretical Price = Pre-Money / Pre-IPO Shares; Offer Price = Theoretical × (1 - Discount)
-        - **Unit Normalization (December 2024 Fix)**: Automatic handling of LLM parsing inconsistencies. Dollar amounts >10,000 auto-convert to millions; share counts >1,000 auto-convert to millions. Prevents billion-scale errors.
-        - **Convertible Debt Treatment**: Tracks trigger price, debt amount, conversion shares. If offer price exceeds trigger, converts debt to equity, adds conversion shares to pre-IPO count, recalculates final offer price with dilution. Full Excel integration showing activation status.
-        - **Dual-Class Share Voting Control (December 2024)**: Calculates founder voting power (founder shares × vote multiplier) vs public votes (non-founder shares × 1). Compares against user-specified control threshold. Generates CRITICAL warning if founders lose voting control post-IPO. Includes Governance section in Excel export with voting breakdown and status (SECURED/BREACHED).
-        - **Milestone Warrants / Contingent Dilution (December 2024)**: Adjusts pre-money valuation downward for potential future share issuance. Calculates expected cost = (theoretical_price - strike_price) × warrant_shares × milestone_probability. Only applies if warrant is in-the-money (theoretical > strike). Includes Milestone Warrants section in Excel export with original/adjusted pre-money values.
-        - **Strategic Partner Block Allocation (December 2024)**: Adjusts IPO pricing confidence for guaranteed demand from strategic partner. Calculates partner percentage of expected float, applies confidence multiplier (formula: 1.0 + partner% × 0.3, capped at 1.15 for max 15% boost), boosts theoretical price before discount. Excel export shows partner name, shares, % of float, confidence multiplier, original vs boosted prices, and price impact.
-        - **Correct Order of Operations (December 2024 Fix)**: When multiple features exist, processes in correct sequence: (1) Convertible debt FIRST (adjusts share count), (2) Milestone warrants SECOND (uses adjusted shares for theoretical price), (3) Strategic partner THIRD (applies confidence boost to valuation). This ensures accurate pricing calculations.
+        - **Excel Export**: Multi-tab workbook with full walkthrough and enhanced instrument analysis
+        - **Unit Normalization**: Automatic handling of LLM parsing inconsistencies. Dollar amounts >10,000 auto-convert to millions; share counts >1,000 auto-convert to millions.
+        - **ENHANCED MULTI-INSTRUMENT ENGINE (December 2024)**: New `ipoInstrumentEngine.ts` handles complex scenarios:
+          - **Multiple Convertible Instruments**: Supports arrays of SAFEs, venture debt, loans with different triggers:
+            - `lower_of`: Converts at lower of fixed price or % of IPO (e.g., "lower of $18 or 80% of IPO")
+            - `price_gt/price_gte`: Conditional conversion if IPO price exceeds threshold (e.g., "converts if IPO > $25")
+            - `at_ipo_price`: Converts at final IPO price
+            - `fixed_shares`: Fixed share conversion regardless of price
+            - `conditional`: Probability-weighted conversion (e.g., "70% probability of FDA approval")
+          - **Probability-Weighted Contingencies**: Earnouts, performance warrants, litigation, grants with probabilities:
+            - Share-based contingencies: Expected shares = shares × probability
+            - Cash-based contingencies: Expected cost = payment × probability (reduces valuation)
+            - Warrants with strikes: Cost = (IPO - strike) × shares × probability
+          - **Strategic Deals with Premiums**: Partners paying IPO + X% premium (not just IPO price)
+          - **Anchor Orders as Demand Boost**: Sovereign wealth funds, cornerstone investors boost pricing confidence:
+            - Formula: demandBoost = 1.0 + min(anchorAmount / raiseTarget × 0.2, 0.20)
+          - **Employee Option Dilution (Treasury Stock Method)**:
+            - If strike < offer: Net dilution = options - (options × strike / offer price)
+          - **Multi-Proxy Blended Valuation**: Weighted array of multiples (e.g., 60% industry × 28x + 40% AI proxy × 32x)
+        - **Processing Order (Correct Sequence)**: Blended valuation → Anchor boost → Convertibles → Contingencies → Employee options → Final pricing
+        - **Dual-Class Share Voting Control**: Calculates founder voting power vs public, generates CRITICAL warning if control threshold breached
+        - **Backward Compatible**: Legacy single-instrument fields still supported for simple cases
       - **3-Statement Model**: Fully implemented with comprehensive 11-tab Excel generation:
         - **Income Statement**: Revenue, COGS, Gross Profit, Operating Expenses, EBITDA, D&A, EBIT, Interest, Taxes, Net Income, EPS
         - **Balance Sheet**: Assets (Cash, A/R, Inventory, PP&E), Liabilities (A/P, Debt), Shareholders' Equity with balance check (Assets = L + E)

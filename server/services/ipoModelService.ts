@@ -1,8 +1,89 @@
 import ExcelJS from 'exceljs';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { runInstrumentEngine, InstrumentEngineResult } from './ipoInstrumentEngine';
 
 export type FinanceLLMProvider = 'zhi1' | 'zhi2' | 'zhi3' | 'zhi4' | 'zhi5';
+
+// ============ ENHANCED MULTI-INSTRUMENT TYPES ============
+
+// Convertible Instrument Types
+export type ConvertibleTriggerType = 
+  | 'price_gt'       // Converts if IPO price > threshold
+  | 'price_gte'      // Converts if IPO price >= threshold
+  | 'lower_of'       // Converts at lower of two prices
+  | 'at_ipo_price'   // Converts at IPO price
+  | 'fixed_shares'   // Fixed share conversion
+  | 'conditional';   // Complex conditional (evaluated by probability)
+
+export interface ConvertibleInstrument {
+  name: string;                          // e.g., "Series D SAFEs", "Venture Debt"
+  type: 'safe' | 'debt' | 'loan' | 'note' | 'other';
+  amountMillions: number;                // Principal amount in millions
+  triggerType: ConvertibleTriggerType;
+  triggerPrice?: number;                 // Price threshold for conversion
+  triggerPrice2?: number;                // Second price for lower_of (e.g., 80% of IPO)
+  triggerMultiplier?: number;            // Multiplier for IPO price (e.g., 0.8 for 80%)
+  triggerCondition?: string;             // Condition string (e.g., "IPO>25")
+  fixedShares?: number;                  // Fixed shares if type is fixed_shares (in millions)
+  probability?: number;                  // Probability of conversion (0-1, default 1.0)
+  interestRate?: number;                 // Interest rate for debt instruments
+}
+
+// Contingent Liability Types
+export type ContingencyType = 
+  | 'earnout'        // Share issuance on performance milestone
+  | 'warrant'        // Performance warrants with strike
+  | 'grant'          // Share grant (e.g., partner agreement)
+  | 'litigation'     // Cash payment contingency
+  | 'royalty'        // Ongoing payment obligation
+  | 'milestone';     // General milestone-based obligation
+
+export interface ContingentLiability {
+  name: string;                          // e.g., "Acquisition Earnout", "FDA Milestone"
+  type: ContingencyType;
+  sharesMillions?: number;               // Shares to be issued (if share-based)
+  strikePrice?: number;                  // Strike price for warrants
+  paymentMillions?: number;              // Cash payment (if payment-based)
+  condition?: string;                    // Condition description
+  probability: number;                   // Probability of occurring (0-1)
+}
+
+// Strategic Deal Types
+export interface StrategicDeal {
+  partnerName: string;                   // e.g., "Google", "Pfizer"
+  sharesMillions: number;                // Shares allocated
+  priceType: 'ipo_price' | 'ipo_premium' | 'fixed' | 'discounted';
+  pricePremium?: number;                 // Premium over IPO (e.g., 0.05 for +5%)
+  priceDiscount?: number;                // Discount from IPO (e.g., 0.10 for -10%)
+  fixedPrice?: number;                   // Fixed price per share
+  probability?: number;                  // Probability of deal closing (default 1.0)
+  isAnchorOrder?: boolean;               // True if this is an anchor order
+}
+
+// Anchor Order (demand boost)
+export interface AnchorOrder {
+  investorName: string;                  // e.g., "Sovereign Wealth Fund"
+  amountMillions: number;                // Committed investment amount
+  priceType: 'ipo_price' | 'ipo_premium' | 'ipo_discount';
+  pricePremium?: number;
+  priceDiscount?: number;
+}
+
+// Employee Option Pool
+export interface EmployeeOptionPool {
+  sharesMillions: number;                // Total unexercised options
+  avgStrikePrice: number;                // Weighted average strike price
+  vestedPercent?: number;                // Percent already vested (default 100%)
+}
+
+// Blended Valuation Component
+export interface ValuationMultiple {
+  name: string;                          // e.g., "Industry Revenue", "AI Proxy"
+  type: 'revenue' | 'ebitda';
+  multiple: number;                      // The multiple (e.g., 28.0x)
+  weight: number;                        // Weight in blend (0-1, all weights should sum to 1)
+}
 
 export interface IPOAssumptions {
   companyName: string;
@@ -41,9 +122,30 @@ export interface IPOAssumptions {
   warrantStrikePrice?: number;        // Price at which those shares can be bought
   milestoneProbability?: number;      // Estimated chance of milestone being hit (0.0 to 1.0)
   
-  // Strategic Partner Block Allocation (Optional)
+  // Strategic Partner Block Allocation (Optional) - Legacy single partner
   strategicPartnerSharesMillions?: number;  // Shares guaranteed to strategic partner (in millions)
   strategicPartnerName?: string;            // Name of strategic partner
+  
+  // ============ ENHANCED MULTI-INSTRUMENT ARRAYS ============
+  // These override the single-instrument fields above when present
+  
+  // Multiple Convertible Instruments
+  convertibles?: ConvertibleInstrument[];
+  
+  // Contingent Liabilities (earnouts, warrants, litigation, etc.)
+  contingencies?: ContingentLiability[];
+  
+  // Strategic Deals (partners with premiums/discounts)
+  strategicDeals?: StrategicDeal[];
+  
+  // Anchor Orders (demand boost)
+  anchorOrders?: AnchorOrder[];
+  
+  // Employee Option Pool (treasury stock method dilution)
+  employeeOptions?: EmployeeOptionPool;
+  
+  // Multi-proxy Blended Valuation
+  valuationMultiples?: ValuationMultiple[];
 }
 
 export interface IPOPricingResult {
@@ -129,6 +231,75 @@ export interface IPOPricingResult {
     priceImpactPercent: number;             // Percentage increase in offer price
   };
   
+  // ============ ENHANCED MULTI-INSTRUMENT ANALYSIS ============
+  
+  // Multi-Convertible Analysis
+  convertibleAnalysis?: {
+    instruments: Array<{
+      name: string;
+      type: string;
+      amountMillions: number;
+      conversionPrice: number;
+      sharesIssued: number;           // In millions
+      triggered: boolean;
+      probability: number;
+      expectedShares: number;         // probability-weighted shares in millions
+    }>;
+    totalDeterministicShares: number;   // Shares that definitely convert
+    totalExpectedShares: number;        // Probability-weighted expected shares
+    totalConvertibleAmount: number;     // Total debt/SAFEs in millions
+  };
+  
+  // Multi-Contingency Analysis
+  contingencyAnalysis?: {
+    liabilities: Array<{
+      name: string;
+      type: string;
+      sharesMillions?: number;
+      paymentMillions?: number;
+      probability: number;
+      expectedShares: number;           // probability-weighted
+      expectedCostMillions: number;     // probability-weighted valuation impact
+    }>;
+    totalExpectedShares: number;        // Sum of expected shares
+    totalExpectedCostMillions: number;  // Sum of expected costs
+  };
+  
+  // Multi-Strategic Deal Analysis
+  strategicDealAnalysis?: {
+    deals: Array<{
+      partnerName: string;
+      sharesMillions: number;
+      priceType: string;
+      effectivePrice: number;
+      premiumOrDiscount: number;
+      demandBoostPercent: number;
+    }>;
+    totalAnchorAmount: number;
+    totalDemandBoostPercent: number;
+  };
+  
+  // Employee Option Dilution
+  employeeOptionAnalysis?: {
+    totalOptions: number;               // In millions
+    avgStrikePrice: number;
+    inTheMoneyOptions: number;          // Options with strike < offer price
+    treasurySharesAdded: number;        // Net dilution using treasury stock method
+    dilutionPercent: number;
+  };
+  
+  // Blended Valuation Breakdown
+  blendedValuationBreakdown?: {
+    components: Array<{
+      name: string;
+      type: string;
+      multiple: number;
+      weight: number;
+      valuationContribution: number;    // In millions
+    }>;
+    totalBlendedValuation: number;
+  };
+  
   // Warnings
   warnings: string[];
   
@@ -155,10 +326,6 @@ Return a JSON object with the following structure:
   "greenshoePercent": number (as decimal, default 0.15 for 15% over-allotment),
   "underwritingFeePercent": number (as decimal, default 0.07 for 7% fee),
   
-  "convertibleDebtAmount": number or null (Convertible debt amount in millions, null if none),
-  "conversionTriggerPrice": number or null (Price per share that triggers conversion, null if no convertible debt),
-  "conversionShares": number or null (Shares the debt converts into in millions, null if no convertible debt),
-  
   "valuationMethod": "revenue" or "ebitda" or "blended" (default "revenue"),
   "blendWeight": number or 0.5 (weight for revenue in blended, default 0.5),
   
@@ -166,25 +333,110 @@ Return a JSON object with the following structure:
   "founderVoteMultiplier": number or null (Votes per founder share, e.g., 10 for 10x voting, null if no dual-class),
   "controlThreshold": number or null (Minimum voting % founders require as decimal, e.g., 0.40 for 40%, null if not specified),
   
-  "warrantSharesMillions": number or null (Shares to be issued if milestone is hit in millions, null if no warrants),
-  "warrantStrikePrice": number or null (Price at which warrant shares can be purchased, null if no warrants),
-  "milestoneProbability": number or null (Probability of milestone being hit as decimal 0.0-1.0, null if no warrants),
+  // ENHANCED MULTI-INSTRUMENT ARRAYS - Use these for complex scenarios with multiple instruments
   
-  "strategicPartnerSharesMillions": number or null (Shares guaranteed/allocated to strategic partner in millions, null if none),
-  "strategicPartnerName": string or null (Name of strategic partner/investor, null if none)
+  "convertibles": [ // Array of convertible instruments (SAFEs, debt, loans with conversion rights)
+    {
+      "name": "Series D SAFEs" (descriptive name),
+      "type": "safe" | "debt" | "loan" | "note" | "other",
+      "amountMillions": number (principal in millions),
+      "triggerType": "lower_of" | "price_gt" | "price_gte" | "at_ipo_price" | "fixed_shares" | "conditional",
+      "triggerPrice": number or null (price threshold),
+      "triggerMultiplier": number or null (e.g., 0.8 for "80% of IPO price"),
+      "triggerCondition": string or null (e.g., "IPO>25"),
+      "fixedShares": number or null (shares in millions if fixed conversion),
+      "probability": number (0-1, default 1.0 if certain)
+    }
+  ] or null,
+  
+  "contingencies": [ // Array of contingent liabilities (earnouts, warrants, litigation, grants)
+    {
+      "name": "Acquisition Earnout" (descriptive name),
+      "type": "earnout" | "warrant" | "grant" | "litigation" | "royalty" | "milestone",
+      "sharesMillions": number or null (shares to issue in millions),
+      "strikePrice": number or null (for warrants),
+      "paymentMillions": number or null (cash payment for litigation/royalty),
+      "condition": string or null (description of trigger condition),
+      "probability": number (0-1, estimated probability)
+    }
+  ] or null,
+  
+  "strategicDeals": [ // Array of strategic partner deals
+    {
+      "partnerName": "Google" (partner name),
+      "sharesMillions": number (shares in millions),
+      "priceType": "ipo_price" | "ipo_premium" | "fixed" | "discounted",
+      "pricePremium": number or null (e.g., 0.05 for +5%),
+      "priceDiscount": number or null (e.g., 0.10 for -10%),
+      "fixedPrice": number or null,
+      "probability": number (default 1.0),
+      "isAnchorOrder": boolean (true if this is committed anchor demand)
+    }
+  ] or null,
+  
+  "anchorOrders": [ // Array of anchor/cornerstone investors
+    {
+      "investorName": "Sovereign Wealth Fund" (investor name),
+      "amountMillions": number (committed investment in millions),
+      "priceType": "ipo_price" | "ipo_premium" | "ipo_discount"
+    }
+  ] or null,
+  
+  "employeeOptions": { // Employee option pool for dilution
+    "sharesMillions": number (total unexercised options in millions),
+    "avgStrikePrice": number (weighted average strike price),
+    "vestedPercent": number (0-1, percent vested, default 1.0)
+  } or null,
+  
+  "valuationMultiples": [ // Multi-proxy blended valuation
+    {
+      "name": "Industry Revenue" (descriptive name),
+      "type": "revenue" | "ebitda",
+      "multiple": number (e.g., 28.0),
+      "weight": number (0-1, weight in blend)
+    }
+  ] or null,
+  
+  // LEGACY SINGLE-INSTRUMENT FIELDS (for backwards compatibility)
+  "convertibleDebtAmount": number or null,
+  "conversionTriggerPrice": number or null,
+  "conversionShares": number or null,
+  "warrantSharesMillions": number or null,
+  "warrantStrikePrice": number or null,
+  "milestoneProbability": number or null,
+  "strategicPartnerSharesMillions": number or null,
+  "strategicPartnerName": string or null
 }
+
+PARSING RULES FOR COMPLEX INSTRUMENTS:
+
+1. Multiple Convertibles: If there are multiple SAFEs, debt instruments, or loans with different conversion terms, use the "convertibles" array.
+   - "lower_of" for terms like "converts at lower of $X or Y% of IPO price"
+   - "price_gt" for terms like "converts if IPO price > $X"
+   - "conditional" for probability-based conversions
+
+2. Blended Valuations: If multiple valuation proxies are mentioned (e.g., "28x revenue weighted 60%, AI proxy 32x weighted 40%"), use "valuationMultiples" array and set valuationMethod to "blended".
+
+3. Strategic Deals with Premiums: If a partner pays "IPO price + X%", use priceType: "ipo_premium" with pricePremium: X/100.
+
+4. Anchor Orders: Large committed investments that reduce execution risk should be captured in "anchorOrders".
+
+5. Employee Options: Unexercised employee options should be captured in "employeeOptions" for treasury stock method dilution.
+
+6. Probability Estimation: For contingent items without explicit probability, estimate based on:
+   - FDA/regulatory approval: 0.60-0.80
+   - Revenue/performance targets: 0.50-0.70
+   - Litigation loss: 0.20-0.40
+   - Partnership execution: 0.70-0.90
 
 Default values if not specified:
 - ipoDiscount: 0.15-0.25 (15-25% is standard, use 0.20 if not specified)
 - greenshoePercent: 0.15 (15% standard over-allotment)
 - underwritingFeePercent: 0.07 (7% standard for IPOs)
 - secondaryShares: 0 (no secondary if not mentioned)
-- valuationMethod: "revenue" (unless EBITDA multiple is the focus)
-- convertibleDebtAmount, conversionTriggerPrice, conversionShares: null if no convertible debt mentioned
+- valuationMethod: "revenue" (unless EBITDA or blended is specified)
 - founderSharesMillions, founderVoteMultiplier: null if no dual-class share structure mentioned
 - controlThreshold: 0.50 (50%) if dual-class is mentioned but no specific threshold given
-- warrantSharesMillions, warrantStrikePrice, milestoneProbability: null if no milestone warrants mentioned
-- strategicPartnerSharesMillions, strategicPartnerName: null if no strategic partner allocation mentioned
 
 IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
 
@@ -206,7 +458,7 @@ export async function parseIPODescription(
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 2000,
+      max_tokens: 8000,
       temperature: 0,
       messages: [
         { role: 'system', content: IPO_PARSING_PROMPT },
@@ -219,7 +471,7 @@ export async function parseIPODescription(
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
-      max_tokens: 2000,
+      max_tokens: 8000,
       temperature: 0,
       system: IPO_PARSING_PROMPT,
       messages: [{ role: 'user', content: userPrompt }]
@@ -237,7 +489,7 @@ export async function parseIPODescription(
     });
     const response = await deepseek.chat.completions.create({
       model: 'deepseek-chat',
-      max_tokens: 2000,
+      max_tokens: 8000,
       temperature: 0,
       messages: [
         { role: 'system', content: IPO_PARSING_PROMPT },
@@ -255,7 +507,7 @@ export async function parseIPODescription(
       },
       body: JSON.stringify({
         model: 'sonar-pro',
-        max_tokens: 2000,
+        max_tokens: 8000,
         temperature: 0,
         messages: [
           { role: 'system', content: IPO_PARSING_PROMPT },
@@ -274,7 +526,7 @@ export async function parseIPODescription(
     });
     const response = await grok.chat.completions.create({
       model: 'grok-3',
-      max_tokens: 2000,
+      max_tokens: 8000,
       temperature: 0,
       messages: [
         { role: 'system', content: IPO_PARSING_PROMPT },
@@ -319,6 +571,87 @@ export async function parseIPODescription(
     return val;
   };
   
+  // Process enhanced multi-instrument arrays
+  let convertibles: ConvertibleInstrument[] | undefined = undefined;
+  if (parsed.convertibles && Array.isArray(parsed.convertibles) && parsed.convertibles.length > 0) {
+    convertibles = parsed.convertibles.map((c: any) => ({
+      name: c.name || 'Unnamed Convertible',
+      type: c.type || 'other',
+      amountMillions: normalizeToMillions(c.amountMillions, 'convertible.amount') || 0,
+      triggerType: c.triggerType || 'at_ipo_price',
+      triggerPrice: c.triggerPrice || undefined,
+      triggerPrice2: c.triggerPrice2 || undefined,
+      triggerMultiplier: c.triggerMultiplier || undefined,
+      triggerCondition: c.triggerCondition || undefined,
+      fixedShares: normalizeShares(c.fixedShares, 'convertible.fixedShares'),
+      probability: c.probability ?? 1.0,
+      interestRate: c.interestRate || undefined,
+    }));
+    console.log(`[IPO Parser] Parsed ${convertibles.length} convertible instruments`);
+  }
+  
+  let contingencies: ContingentLiability[] | undefined = undefined;
+  if (parsed.contingencies && Array.isArray(parsed.contingencies) && parsed.contingencies.length > 0) {
+    contingencies = parsed.contingencies.map((c: any) => ({
+      name: c.name || 'Unnamed Contingency',
+      type: c.type || 'milestone',
+      sharesMillions: normalizeShares(c.sharesMillions, 'contingency.shares'),
+      strikePrice: c.strikePrice || undefined,
+      paymentMillions: normalizeToMillions(c.paymentMillions, 'contingency.payment'),
+      condition: c.condition || undefined,
+      probability: c.probability ?? 0.5,
+    }));
+    console.log(`[IPO Parser] Parsed ${contingencies.length} contingent liabilities`);
+  }
+  
+  let strategicDeals: StrategicDeal[] | undefined = undefined;
+  if (parsed.strategicDeals && Array.isArray(parsed.strategicDeals) && parsed.strategicDeals.length > 0) {
+    strategicDeals = parsed.strategicDeals.map((d: any) => ({
+      partnerName: d.partnerName || 'Strategic Partner',
+      sharesMillions: normalizeShares(d.sharesMillions, 'deal.shares') || 0,
+      priceType: d.priceType || 'ipo_price',
+      pricePremium: d.pricePremium || undefined,
+      priceDiscount: d.priceDiscount || undefined,
+      fixedPrice: d.fixedPrice || undefined,
+      probability: d.probability ?? 1.0,
+      isAnchorOrder: d.isAnchorOrder ?? false,
+    }));
+    console.log(`[IPO Parser] Parsed ${strategicDeals.length} strategic deals`);
+  }
+  
+  let anchorOrders: AnchorOrder[] | undefined = undefined;
+  if (parsed.anchorOrders && Array.isArray(parsed.anchorOrders) && parsed.anchorOrders.length > 0) {
+    anchorOrders = parsed.anchorOrders.map((a: any) => ({
+      investorName: a.investorName || 'Anchor Investor',
+      amountMillions: normalizeToMillions(a.amountMillions, 'anchor.amount') || 0,
+      priceType: a.priceType || 'ipo_price',
+      pricePremium: a.pricePremium || undefined,
+      priceDiscount: a.priceDiscount || undefined,
+    }));
+    console.log(`[IPO Parser] Parsed ${anchorOrders.length} anchor orders`);
+  }
+  
+  let employeeOptions: EmployeeOptionPool | undefined = undefined;
+  if (parsed.employeeOptions && typeof parsed.employeeOptions === 'object') {
+    employeeOptions = {
+      sharesMillions: normalizeShares(parsed.employeeOptions.sharesMillions, 'options.shares') || 0,
+      avgStrikePrice: parsed.employeeOptions.avgStrikePrice || 0,
+      vestedPercent: parsed.employeeOptions.vestedPercent ?? 1.0,
+    };
+    console.log(`[IPO Parser] Parsed employee options: ${employeeOptions.sharesMillions}M @ $${employeeOptions.avgStrikePrice}`);
+  }
+  
+  let valuationMultiples: ValuationMultiple[] | undefined = undefined;
+  if (parsed.valuationMultiples && Array.isArray(parsed.valuationMultiples) && parsed.valuationMultiples.length > 0) {
+    valuationMultiples = parsed.valuationMultiples.map((m: any) => ({
+      name: m.name || 'Valuation Multiple',
+      type: m.type || 'revenue',
+      multiple: m.multiple || 0,
+      weight: m.weight || 0,
+    }));
+    console.log(`[IPO Parser] Parsed ${valuationMultiples.length} valuation multiples`);
+  }
+  
   // Apply defaults with normalization
   return {
     companyName: parsed.companyName || 'Target Company',
@@ -333,6 +666,7 @@ export async function parseIPODescription(
     secondaryShares: normalizeShares(parsed.secondaryShares, 'secondaryShares') || 0,
     greenshoePercent: parsed.greenshoePercent ?? 0.15,
     underwritingFeePercent: parsed.underwritingFeePercent ?? 0.07,
+    // Legacy single-instrument fields
     convertibleDebtAmount: normalizeToMillions(parsed.convertibleDebtAmount, 'convertibleDebtAmount'),
     conversionTriggerPrice: parsed.conversionTriggerPrice || undefined,
     conversionShares: normalizeShares(parsed.conversionShares, 'conversionShares'),
@@ -342,13 +676,20 @@ export async function parseIPODescription(
     founderSharesMillions: normalizeShares(parsed.founderSharesMillions, 'founderSharesMillions'),
     founderVoteMultiplier: parsed.founderVoteMultiplier || undefined,
     controlThreshold: parsed.controlThreshold ?? (parsed.founderSharesMillions ? 0.50 : undefined),
-    // Milestone warrants
+    // Legacy milestone warrants
     warrantSharesMillions: normalizeShares(parsed.warrantSharesMillions, 'warrantSharesMillions'),
     warrantStrikePrice: parsed.warrantStrikePrice || undefined,
     milestoneProbability: parsed.milestoneProbability || undefined,
-    // Strategic partner allocation
+    // Legacy strategic partner allocation
     strategicPartnerSharesMillions: normalizeShares(parsed.strategicPartnerSharesMillions, 'strategicPartnerSharesMillions'),
     strategicPartnerName: parsed.strategicPartnerName || undefined,
+    // Enhanced multi-instrument arrays
+    convertibles,
+    contingencies,
+    strategicDeals,
+    anchorOrders,
+    employeeOptions,
+    valuationMultiples,
   };
 }
 
@@ -410,13 +751,136 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     warnings.push('Missing EBITDA data for selected valuation method. Defaulted to revenue multiple.');
   }
 
+  // ============ ENHANCED MULTI-INSTRUMENT PROCESSING ============
+  // Check if enhanced instrument arrays are present
+  const hasEnhancedInstruments = !!(
+    (assumptions.convertibles && assumptions.convertibles.length > 0) ||
+    (assumptions.contingencies && assumptions.contingencies.length > 0) ||
+    (assumptions.strategicDeals && assumptions.strategicDeals.length > 0) ||
+    (assumptions.anchorOrders && assumptions.anchorOrders.length > 0) ||
+    assumptions.employeeOptions ||
+    (assumptions.valuationMultiples && assumptions.valuationMultiples.length > 0)
+  );
+  
+  let engineResult: InstrumentEngineResult | undefined;
+  let convertibleAnalysis: IPOPricingResult['convertibleAnalysis'] = undefined;
+  let contingencyAnalysis: IPOPricingResult['contingencyAnalysis'] = undefined;
+  let strategicDealAnalysis: IPOPricingResult['strategicDealAnalysis'] = undefined;
+  let employeeOptionAnalysis: IPOPricingResult['employeeOptionAnalysis'] = undefined;
+  let blendedValuationBreakdown: IPOPricingResult['blendedValuationBreakdown'] = undefined;
+  
+  // Calculate first-pass theoretical price for engine
+  const firstPassTheoreticalPrice = preMoneyValuation / originalPreIpoShares;
+  const tentativeOfferPrice = firstPassTheoreticalPrice * (1 - ipoDiscount);
+  
+  if (hasEnhancedInstruments) {
+    console.log(`[IPO Model] ============ ENHANCED MULTI-INSTRUMENT ENGINE ============`);
+    
+    // Run instrument engine with all complex instruments
+    engineResult = runInstrumentEngine(
+      assumptions,
+      preMoneyValuation,
+      firstPassTheoreticalPrice,
+      tentativeOfferPrice
+    );
+    
+    // Log engine output
+    for (const log of engineResult.logs) {
+      console.log(log);
+    }
+    
+    // Apply engine adjustments
+    if (assumptions.valuationMultiples && assumptions.valuationMultiples.length > 0) {
+      preMoneyValuation = engineResult.adjustedPreMoneyValuation;
+      console.log(`[IPO Model] Engine adjusted pre-money: $${preMoneyValuation.toFixed(2)}M`);
+    }
+    
+    // Build enhanced result objects
+    if (engineResult.convertibleResults.length > 0) {
+      convertibleAnalysis = {
+        instruments: engineResult.convertibleResults.map(c => ({
+          name: c.name,
+          type: c.type,
+          amountMillions: c.amountMillions,
+          conversionPrice: c.conversionPrice,
+          sharesIssued: c.sharesIssued,
+          triggered: c.triggered,
+          probability: c.probability,
+          expectedShares: c.expectedShares,
+        })),
+        totalDeterministicShares: engineResult.totalDeterministicConversionShares,
+        totalExpectedShares: engineResult.totalExpectedConversionShares,
+        totalConvertibleAmount: engineResult.convertibleResults.reduce((sum, c) => sum + c.amountMillions, 0),
+      };
+    }
+    
+    if (engineResult.contingencyResults.length > 0) {
+      contingencyAnalysis = {
+        liabilities: engineResult.contingencyResults.map(c => ({
+          name: c.name,
+          type: c.type,
+          sharesMillions: c.sharesMillions,
+          paymentMillions: c.paymentMillions,
+          probability: c.probability,
+          expectedShares: c.expectedShares,
+          expectedCostMillions: c.expectedCostMillions,
+        })),
+        totalExpectedShares: engineResult.totalExpectedContingencyShares,
+        totalExpectedCostMillions: engineResult.totalExpectedContingencyCost,
+      };
+    }
+    
+    if (engineResult.strategicDealResults.length > 0) {
+      strategicDealAnalysis = {
+        deals: engineResult.strategicDealResults,
+        totalAnchorAmount: engineResult.totalAnchorAmount,
+        totalDemandBoostPercent: (engineResult.demandBoostMultiplier - 1) * 100,
+      };
+    }
+    
+    if (assumptions.employeeOptions && engineResult.employeeOptionDilution > 0) {
+      const options = assumptions.employeeOptions;
+      employeeOptionAnalysis = {
+        totalOptions: options.sharesMillions,
+        avgStrikePrice: options.avgStrikePrice,
+        inTheMoneyOptions: options.sharesMillions * (options.vestedPercent ?? 1.0),
+        treasurySharesAdded: engineResult.employeeOptionDilution,
+        dilutionPercent: (engineResult.employeeOptionDilution / originalPreIpoShares) * 100,
+      };
+    }
+    
+    if (engineResult.blendedValuationComponents.length > 0) {
+      blendedValuationBreakdown = {
+        components: engineResult.blendedValuationComponents.map(c => ({
+          name: c.name,
+          type: c.type,
+          multiple: c.multiple,
+          weight: c.weight,
+          valuationContribution: c.contribution,
+        })),
+        totalBlendedValuation: engineResult.blendedValuationComponents.reduce((sum, c) => sum + c.contribution, 0),
+      };
+    }
+    
+    // Add engine warnings
+    if (engineResult.totalExpectedContingencyCost > 0) {
+      warnings.push(`Probability-weighted contingent liabilities: $${engineResult.totalExpectedContingencyCost.toFixed(2)}M expected cost.`);
+    }
+    if (engineResult.totalExpectedConversionShares > 0) {
+      warnings.push(`Expected conversion shares: ${engineResult.totalExpectedConversionShares.toFixed(3)}M (includes probability-weighted instruments).`);
+    }
+    if (engineResult.totalExpectedContingencyShares > 0) {
+      warnings.push(`Expected contingent shares: ${engineResult.totalExpectedContingencyShares.toFixed(3)}M (probability-weighted).`);
+    }
+    if (engineResult.employeeOptionDilution > 0) {
+      warnings.push(`Employee option dilution: ${engineResult.employeeOptionDilution.toFixed(3)}M shares (treasury stock method).`);
+    }
+  }
+
   // ============ PHASE 1.5: Handle Convertible Debt FIRST (Adjusts Share Count) ============
   // IMPORTANT: Convertible debt must be processed BEFORE milestone warrants
   // because warrants use the adjusted share count for theoretical price calculation
-  
-  // Calculate first-pass theoretical price to check conversion trigger
-  const firstPassTheoreticalPrice = preMoneyValuation / originalPreIpoShares;
-  const tentativeOfferPrice = firstPassTheoreticalPrice * (1 - ipoDiscount);
+  // Note: This is legacy single-convertible processing; enhanced processing above handles arrays
   
   let adjustedPreIpoShares = originalPreIpoShares;
   let conversionActivated = false;
@@ -577,6 +1041,33 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
   // ============ PHASE 3: Calculate Final Theoretical & Offer Price ============
   // Use adjusted share count (may be same as original if no conversion)
   // Apply confidence multiplier from strategic partner (1.0 if none)
+  
+  // If engine was used, apply engine adjustments to share count and valuation
+  if (engineResult) {
+    // Add engine-calculated share adjustments
+    const engineShareAdjustment = 
+      engineResult.totalExpectedConversionShares + 
+      engineResult.totalExpectedContingencyShares + 
+      engineResult.employeeOptionDilution;
+    
+    if (engineShareAdjustment > 0) {
+      adjustedPreIpoShares += engineShareAdjustment;
+      console.log(`[IPO Model] Engine Share Adjustment: +${engineShareAdjustment.toFixed(3)}M shares → ${adjustedPreIpoShares.toFixed(3)}M total`);
+    }
+    
+    // Apply contingency cost adjustment
+    if (engineResult.totalExpectedContingencyCost > 0) {
+      preMoneyValuation -= engineResult.totalExpectedContingencyCost;
+      console.log(`[IPO Model] Engine Contingency Cost: -$${engineResult.totalExpectedContingencyCost.toFixed(2)}M → $${preMoneyValuation.toFixed(2)}M valuation`);
+    }
+    
+    // Apply demand boost if not already applied via legacy strategic partner
+    if (engineResult.demandBoostMultiplier > 1.0 && confidenceMultiplier === 1.0) {
+      confidenceMultiplier = engineResult.demandBoostMultiplier;
+      console.log(`[IPO Model] Engine Demand Boost: ${((confidenceMultiplier - 1) * 100).toFixed(1)}%`);
+    }
+  }
+  
   const theoreticalPrice = (preMoneyValuation / adjustedPreIpoShares) * confidenceMultiplier;
   console.log(`[IPO Model] Theoretical Price: $${preMoneyValuation}M / ${adjustedPreIpoShares}M shares${confidenceMultiplier > 1 ? ` × ${confidenceMultiplier.toFixed(4)}x` : ''} = $${theoreticalPrice.toFixed(2)}/share`);
 
@@ -731,6 +1222,13 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     votingControlAnalysis,
     milestoneWarrantTreatment,
     strategicPartnerTreatment,
+    
+    // Enhanced multi-instrument analysis
+    convertibleAnalysis,
+    contingencyAnalysis,
+    strategicDealAnalysis,
+    employeeOptionAnalysis,
+    blendedValuationBreakdown,
     
     warnings,
     assumptions,
