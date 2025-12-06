@@ -40,6 +40,10 @@ export interface IPOAssumptions {
   warrantSharesMillions?: number;     // Shares to be issued if milestone hit (in millions)
   warrantStrikePrice?: number;        // Price at which those shares can be bought
   milestoneProbability?: number;      // Estimated chance of milestone being hit (0.0 to 1.0)
+  
+  // Strategic Partner Block Allocation (Optional)
+  strategicPartnerSharesMillions?: number;  // Shares guaranteed to strategic partner (in millions)
+  strategicPartnerName?: string;            // Name of strategic partner
 }
 
 export interface IPOPricingResult {
@@ -111,6 +115,20 @@ export interface IPOPricingResult {
     warrantInTheMoney: boolean;         // true if theoretical price > strike price
   };
   
+  // Strategic Partner Block Allocation Treatment
+  strategicPartnerTreatment?: {
+    partnerName: string;                    // Name of strategic partner
+    partnerSharesMillions: number;          // Shares allocated to partner
+    partnerPercentageOfFloat: number;       // Partner's allocation as % of expected float
+    confidenceMultiplier: number;           // Boost applied to valuation (e.g., 1.08 = 8% boost)
+    originalTheoreticalPrice: number;       // Theoretical price before partner boost
+    boostedTheoreticalPrice: number;        // Theoretical price after partner boost
+    originalOfferPrice: number;             // Offer price without partner
+    boostedOfferPrice: number;              // Offer price with partner boost
+    priceImpact: number;                    // Dollar increase per share
+    priceImpactPercent: number;             // Percentage increase in offer price
+  };
+  
   // Warnings
   warnings: string[];
   
@@ -150,7 +168,10 @@ Return a JSON object with the following structure:
   
   "warrantSharesMillions": number or null (Shares to be issued if milestone is hit in millions, null if no warrants),
   "warrantStrikePrice": number or null (Price at which warrant shares can be purchased, null if no warrants),
-  "milestoneProbability": number or null (Probability of milestone being hit as decimal 0.0-1.0, null if no warrants)
+  "milestoneProbability": number or null (Probability of milestone being hit as decimal 0.0-1.0, null if no warrants),
+  
+  "strategicPartnerSharesMillions": number or null (Shares guaranteed/allocated to strategic partner in millions, null if none),
+  "strategicPartnerName": string or null (Name of strategic partner/investor, null if none)
 }
 
 Default values if not specified:
@@ -163,6 +184,7 @@ Default values if not specified:
 - founderSharesMillions, founderVoteMultiplier: null if no dual-class share structure mentioned
 - controlThreshold: 0.50 (50%) if dual-class is mentioned but no specific threshold given
 - warrantSharesMillions, warrantStrikePrice, milestoneProbability: null if no milestone warrants mentioned
+- strategicPartnerSharesMillions, strategicPartnerName: null if no strategic partner allocation mentioned
 
 IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
 
@@ -324,6 +346,9 @@ export async function parseIPODescription(
     warrantSharesMillions: normalizeShares(parsed.warrantSharesMillions, 'warrantSharesMillions'),
     warrantStrikePrice: parsed.warrantStrikePrice || undefined,
     milestoneProbability: parsed.milestoneProbability || undefined,
+    // Strategic partner allocation
+    strategicPartnerSharesMillions: normalizeShares(parsed.strategicPartnerSharesMillions, 'strategicPartnerSharesMillions'),
+    strategicPartnerName: parsed.strategicPartnerName || undefined,
   };
 }
 
@@ -352,6 +377,8 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     warrantSharesMillions,
     warrantStrikePrice,
     milestoneProbability,
+    strategicPartnerSharesMillions,
+    strategicPartnerName,
   } = assumptions;
 
   const warnings: string[] = [];
@@ -491,10 +518,67 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     }
   }
 
+  // ============ PHASE 2.5: Strategic Partner Block Allocation (Confidence Boost) ============
+  // Guaranteed demand from strategic partner increases pricing power
+  let strategicPartnerTreatment: IPOPricingResult['strategicPartnerTreatment'] = undefined;
+  let confidenceMultiplier = 1.0;
+  
+  if (strategicPartnerSharesMillions && strategicPartnerSharesMillions > 0) {
+    console.log(`[IPO Model] ============ STRATEGIC PARTNER ALLOCATION (PHASE 2.5) ============`);
+    
+    // Calculate base theoretical price for reference
+    const baseTheoreticalPrice = preMoneyValuation / adjustedPreIpoShares;
+    const baseOfferPrice = baseTheoreticalPrice * (1 - ipoDiscount);
+    
+    // Estimate expected float (typically ~10-25% of pre-IPO shares)
+    // Use approximate primary raise / offer price to estimate new shares
+    const estimatedNewShares = primaryRaiseTarget / baseOfferPrice;
+    const estimatedFloat = estimatedNewShares + secondaryShares;
+    
+    // Partner percentage of expected float
+    const partnerPercentageOfFloat = strategicPartnerSharesMillions / estimatedFloat;
+    
+    // Confidence multiplier: Based on partner size relative to float
+    // Formula: 1.0 + (partner% × 0.3), capped at 1.15 (max 15% boost)
+    confidenceMultiplier = Math.min(1.0 + (partnerPercentageOfFloat * 0.3), 1.15);
+    
+    // Boost theoretical price (applied before discount)
+    const boostedTheoreticalPrice = baseTheoreticalPrice * confidenceMultiplier;
+    const boostedOfferPrice = boostedTheoreticalPrice * (1 - ipoDiscount);
+    
+    const priceImpact = boostedOfferPrice - baseOfferPrice;
+    const priceImpactPercent = (priceImpact / baseOfferPrice) * 100;
+    
+    console.log(`[IPO Model] Strategic Partner: ${strategicPartnerName || 'Unnamed Partner'}`);
+    console.log(`[IPO Model] Partner Shares: ${strategicPartnerSharesMillions}M`);
+    console.log(`[IPO Model] Estimated Float: ${estimatedFloat.toFixed(3)}M shares`);
+    console.log(`[IPO Model] Partner % of Float: ${(partnerPercentageOfFloat * 100).toFixed(1)}%`);
+    console.log(`[IPO Model] Confidence Multiplier: ${confidenceMultiplier.toFixed(4)}x`);
+    console.log(`[IPO Model] Base Theoretical: $${baseTheoreticalPrice.toFixed(2)} → Boosted: $${boostedTheoreticalPrice.toFixed(2)}`);
+    console.log(`[IPO Model] Base Offer: $${baseOfferPrice.toFixed(2)} → Boosted: $${boostedOfferPrice.toFixed(2)}`);
+    console.log(`[IPO Model] Price Impact: +$${priceImpact.toFixed(2)} (+${priceImpactPercent.toFixed(1)}%)`);
+    
+    warnings.push(`Strategic partner (${strategicPartnerName || 'Partner'}) allocation of ${strategicPartnerSharesMillions}M shares: +${priceImpactPercent.toFixed(1)}% price boost due to guaranteed demand.`);
+    
+    strategicPartnerTreatment = {
+      partnerName: strategicPartnerName || 'Strategic Partner',
+      partnerSharesMillions: strategicPartnerSharesMillions,
+      partnerPercentageOfFloat: partnerPercentageOfFloat,
+      confidenceMultiplier: confidenceMultiplier,
+      originalTheoreticalPrice: baseTheoreticalPrice,
+      boostedTheoreticalPrice: boostedTheoreticalPrice,
+      originalOfferPrice: baseOfferPrice,
+      boostedOfferPrice: boostedOfferPrice,
+      priceImpact: priceImpact,
+      priceImpactPercent: priceImpactPercent,
+    };
+  }
+
   // ============ PHASE 3: Calculate Final Theoretical & Offer Price ============
   // Use adjusted share count (may be same as original if no conversion)
-  const theoreticalPrice = preMoneyValuation / adjustedPreIpoShares;
-  console.log(`[IPO Model] Theoretical Price: $${preMoneyValuation}M / ${adjustedPreIpoShares}M shares = $${theoreticalPrice.toFixed(2)}/share`);
+  // Apply confidence multiplier from strategic partner (1.0 if none)
+  const theoreticalPrice = (preMoneyValuation / adjustedPreIpoShares) * confidenceMultiplier;
+  console.log(`[IPO Model] Theoretical Price: $${preMoneyValuation}M / ${adjustedPreIpoShares}M shares${confidenceMultiplier > 1 ? ` × ${confidenceMultiplier.toFixed(4)}x` : ''} = $${theoreticalPrice.toFixed(2)}/share`);
 
   // Apply Market Discount to get Offer Price
   let offerPrice = theoreticalPrice * (1 - ipoDiscount);
@@ -646,6 +730,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     convertibleDebtTreatment,
     votingControlAnalysis,
     milestoneWarrantTreatment,
+    strategicPartnerTreatment,
     
     warnings,
     assumptions,
@@ -967,6 +1052,79 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     });
   }
   
+  // Strategic Partner Block Allocation Section (if applicable)
+  if (result.strategicPartnerTreatment) {
+    row += 1;
+    let sectionNum = '5';
+    if (result.convertibleDebtTreatment) sectionNum = '6';
+    if (result.votingControlAnalysis) sectionNum = String(parseInt(sectionNum) + 1);
+    if (result.milestoneWarrantTreatment) sectionNum = String(parseInt(sectionNum) + 1);
+    
+    summarySheet.getCell(`A${row}`).value = `${sectionNum}. STRATEGIC PARTNER BLOCK ALLOCATION`;
+    summarySheet.getCell(`A${row}`).style = sectionStyle;
+    summarySheet.mergeCells(`A${row}:E${row}`);
+    row++;
+    
+    const spt = result.strategicPartnerTreatment;
+    const partnerData: [string, string | number, string?][] = [
+      ['Partner Name', spt.partnerName, ''],
+      ['Guaranteed Shares', spt.partnerSharesMillions, 'millions'],
+      ['% of Expected Float', spt.partnerPercentageOfFloat, ''],
+      ['', '', ''],
+      ['PRICING IMPACT:', '', ''],
+      ['Confidence Multiplier', `${spt.confidenceMultiplier.toFixed(4)}x`, ''],
+      ['Original Theoretical Price', spt.originalTheoreticalPrice, 'per share'],
+      ['Boosted Theoretical Price', spt.boostedTheoreticalPrice, 'per share'],
+      ['Original Offer Price', spt.originalOfferPrice, 'per share'],
+      ['Boosted Offer Price', spt.boostedOfferPrice, 'per share'],
+      ['Price Impact', spt.priceImpact, 'per share'],
+      ['Price Impact %', spt.priceImpactPercent / 100, ''],
+    ];
+    
+    partnerData.forEach(([label, value, unit]) => {
+      if (label === '') {
+        row++;
+        return;
+      }
+      
+      // Sub-section header styling
+      if ((label as string) === 'PRICING IMPACT:') {
+        summarySheet.getCell(`A${row}`).value = label as string;
+        summarySheet.getCell(`A${row}`).font = { bold: true, italic: true };
+        row++;
+        return;
+      }
+      
+      summarySheet.getCell(`A${row}`).value = label as string;
+      summarySheet.getCell(`B${row}`).value = value;
+      
+      if (typeof value === 'number') {
+        if ((unit as string) === 'millions') {
+          summarySheet.getCell(`B${row}`).numFmt = '#,##0.000"M"';
+        } else if ((unit as string) === 'per share') {
+          summarySheet.getCell(`B${row}`).numFmt = '"$"#,##0.00';
+          // Highlight price impact in green
+          if ((label as string).includes('Impact') && !((label as string).includes('%'))) {
+            summarySheet.getCell(`B${row}`).font = { bold: true, color: { argb: 'FF006400' } };
+            summarySheet.getCell(`B${row}`).numFmt = '"+$"#,##0.00';
+          }
+        } else if ((label as string).includes('%') || (label as string).includes('Float')) {
+          summarySheet.getCell(`B${row}`).numFmt = '0.0%';
+          if ((label as string).includes('Impact')) {
+            summarySheet.getCell(`B${row}`).font = { bold: true, color: { argb: 'FF006400' } };
+            summarySheet.getCell(`B${row}`).numFmt = '"+0.0%"';
+          }
+        }
+      }
+      
+      if (unit && (unit as string) !== '') {
+        summarySheet.getCell(`C${row}`).value = unit as string;
+        summarySheet.getCell(`C${row}`).font = { italic: true, color: { argb: 'FF666666' } };
+      }
+      row++;
+    });
+  }
+  
   // Warnings
   if (result.warnings && result.warnings.length > 0) {
     row += 1;
@@ -1027,6 +1185,10 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
     ['Warrant Shares', assumptions.warrantSharesMillions || 'N/A', assumptions.warrantSharesMillions ? 'millions' : ''],
     ['Warrant Strike Price', assumptions.warrantStrikePrice ? `$${assumptions.warrantStrikePrice.toFixed(2)}` : 'N/A'],
     ['Milestone Probability', assumptions.milestoneProbability ? `${(assumptions.milestoneProbability * 100).toFixed(0)}%` : 'N/A'],
+    [''],
+    ['STRATEGIC PARTNER'],
+    ['Partner Name', assumptions.strategicPartnerName || 'N/A'],
+    ['Partner Shares', assumptions.strategicPartnerSharesMillions || 'N/A', assumptions.strategicPartnerSharesMillions ? 'millions' : ''],
   ];
   
   row = 3;
@@ -1035,7 +1197,7 @@ export async function generateIPOExcel(result: IPOPricingResult): Promise<Buffer
       row++;
       return;
     }
-    if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS', 'CONVERTIBLE DEBT', 'MILESTONE WARRANTS'].includes(label as string)) {
+    if (['FINANCIAL METRICS', 'VALUATION', 'SHARE STRUCTURE', 'OFFERING TERMS', 'CONVERTIBLE DEBT', 'MILESTONE WARRANTS', 'STRATEGIC PARTNER'].includes(label as string)) {
       assumptionsSheet.getCell(`A${row}`).style = sectionStyle;
     }
     assumptionsSheet.getCell(`A${row}`).value = label as string;
