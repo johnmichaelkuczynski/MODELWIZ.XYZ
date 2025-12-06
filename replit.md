@@ -32,6 +32,8 @@ The application uses a monorepo structure, separating client and server.
         - **Interest Expense**: Properly calculated from debt schedule and included in pro forma projections.
         - Features separate phase-in schedules for revenue synergies (default: 0/50/100/100/100%) and cost synergies (default: 20/60/100/100/100%).
       - **IPO Pricing Model**: Fully implemented with comprehensive pricing analysis and **Enhanced Multi-Instrument Engine (December 2024)**:
+        - **Discount Bug Fix (December 2024)**: Changed `||` to `??` for discount parsing to allow 0% discount. JavaScript falsy value issue fixed - 0% discount no longer defaults to 20%.
+        - **Share Count Fix (December 2024)**: Added `newPrimaryShares` and `userGreenshoeShares` fields for direct user input. Correct formula: `offerPrice = discountedPreMoneyValuation / (preIPO + newPrimary + greenshoe)`
         - **Valuation Methods**: Revenue multiple (default), EBITDA multiple, or multi-proxy blended (weighted array of multiples)
         - **Pricing Calculation**: Pre-money valuation, theoretical share price, offer price with IPO discount
         - **Offer Structure**: Primary shares issued, secondary shares sold, greenshoe (over-allotment) option
