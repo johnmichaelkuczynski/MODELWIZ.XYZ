@@ -103,6 +103,10 @@ export interface IPOAssumptions {
   greenshoePercent?: number;    // Over-allotment option as decimal (typically 0.15 = 15%)
   underwritingFeePercent?: number;  // Underwriting commission as decimal (typically 0.07 = 7%)
   
+  // USER-ENTERED SHARE COUNTS (override calculated values)
+  newPrimaryShares?: number;    // User-specified new primary shares to issue (in millions)
+  userGreenshoeShares?: number; // User-specified greenshoe shares (in millions)
+  
   // Convertible Debt (Optional)
   convertibleDebtAmount?: number;     // Convertible debt amount in millions
   conversionTriggerPrice?: number;    // Price per share that triggers conversion
@@ -179,6 +183,7 @@ export interface IPOPricingResult {
   
   // Ownership & Dilution
   postIpoSharesOutstanding: number;  // Total shares post-IPO in millions
+  postIpoSharesWithGreenshoe: number;  // Total shares including greenshoe in millions
   percentageSold: number;            // Percentage of company sold in IPO
   existingHoldersDilution: number;   // Dilution to existing shareholders
   
@@ -335,6 +340,9 @@ Return a JSON object with the following structure:
   "secondaryShares": number or 0 (Secondary shares in millions, 0 if primary only),
   "greenshoePercent": number (as decimal, default 0.15 for 15% over-allotment),
   "underwritingFeePercent": number (as decimal, default 0.07 for 7% fee),
+  
+  "newPrimaryShares": number or null (IMPORTANT: If user explicitly specifies "new shares issued", "new shares", "primary shares to issue", use this exact value in millions. When provided, this OVERRIDES any calculation from primaryRaiseTarget/price. Example: If user says "100 million new shares", set this to 100. Set to null if not explicitly provided.),
+  "userGreenshoeShares": number or null (If user explicitly specifies greenshoe shares as a count, not percent. Set to null to use greenshoePercent instead.),
   
   "valuationMethod": "revenue" or "ebitda" or "blended" (default "revenue"),
   "blendWeight": number or 0.5 (weight for revenue in blended, default 0.5),
@@ -587,6 +595,8 @@ export async function parseIPODescription(
   console.log(`[IPO Parser] LLM returned preIpoShares: ${parsed.preIpoShares} (type: ${typeof parsed.preIpoShares})`);
   console.log(`[IPO Parser] LLM returned ltmRevenue: ${parsed.ltmRevenue}, multiple: ${parsed.industryRevenueMultiple}`);
   console.log(`[IPO Parser] LLM returned primaryRaiseTarget: ${parsed.primaryRaiseTarget}`);
+  console.log(`[IPO Parser] LLM returned newPrimaryShares: ${parsed.newPrimaryShares} (USER-ENTERED)`);
+  console.log(`[IPO Parser] LLM returned userGreenshoeShares: ${parsed.userGreenshoeShares} (USER-ENTERED)`);
   
   // Handle alternative field names the LLM might use
   if (!parsed.preIpoShares && parsed.sharesOutstanding) {
@@ -755,6 +765,9 @@ export async function parseIPODescription(
     revenueGrowthRate: parsed.revenueGrowthRate || undefined,
     growthPremiumThreshold: parsed.growthPremiumThreshold || 2.0,
     growthPremium: parsed.growthPremium || undefined,
+    // USER-ENTERED SHARE COUNTS (override calculated values)
+    newPrimaryShares: normalizeShares(parsed.newPrimaryShares, 'newPrimaryShares'),
+    userGreenshoeShares: normalizeShares(parsed.userGreenshoeShares, 'userGreenshoeShares'),
   };
 }
 
@@ -1175,45 +1188,76 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
   const theoreticalPrice = adjustedPreMoneyValuation / adjustedPreIpoShares;
   console.log(`[IPO Model] Theoretical Price (Undiscounted): $${adjustedPreMoneyValuation.toFixed(2)}M / ${adjustedPreIpoShares.toFixed(4)}M pre-IPO shares = $${theoreticalPrice.toFixed(2)}/share`);
   
-  // Step 4: ITERATIVELY SOLVE for Offer Price using POST-IPO fully diluted shares
-  // This is a circular calculation: Price depends on post-IPO shares, which depends on new shares, which depends on price
+  // Step 4: Calculate Offer Price using POST-IPO fully diluted shares
   // Formula: Offer Price = Discounted Pre-Money / (Pre-IPO + New Shares + Greenshoe)
-  // Where: New Shares = Primary Raise / Offer Price, Greenshoe = New Shares × greenshoePercent
-  // Algebraic solution:
-  //   P = DiscountedPM / (PreIPO + Raise/P + Raise/P × Greenshoe%)
-  //   P = DiscountedPM / (PreIPO + Raise/P × (1 + Greenshoe%))
-  //   P × (PreIPO + Raise/P × (1 + Greenshoe%)) = DiscountedPM
-  //   P × PreIPO + Raise × (1 + Greenshoe%) = DiscountedPM
-  //   P = (DiscountedPM - Raise × (1 + Greenshoe%)) / PreIPO
   
   const preIpoShares = adjustedPreIpoShares;
-  const greenshoeMultiplier = 1 + greenshoePercent; // e.g., 1.15 for 15% greenshoe
   
-  // Algebraic solution for offer price
-  let offerPrice = (discountedPreMoneyValuation - primaryRaiseTarget * greenshoeMultiplier) / preIpoShares;
+  // ============ CRITICAL: Check for USER-ENTERED share counts ============
+  // User-entered values OVERRIDE calculated values
+  const userNewPrimaryShares = assumptions.newPrimaryShares;
+  const userGreenshoeSharesInput = assumptions.userGreenshoeShares;
   
-  // Validate: If the algebraic solution produces negative or very low price, use iterative approach
-  if (offerPrice <= 0) {
-    console.log(`[IPO Model] Algebraic solution invalid ($${offerPrice.toFixed(2)}), using iterative approach`);
-    // Fallback: Iterate to find equilibrium price
-    offerPrice = discountedPreMoneyValuation / preIpoShares; // Initial guess
-    for (let i = 0; i < 20; i++) {
-      const newShares = primaryRaiseTarget / offerPrice;
-      const greenshoe = newShares * greenshoePercent;
-      const totalPostIpo = preIpoShares + newShares + greenshoe;
-      const newPrice = discountedPreMoneyValuation / totalPostIpo;
-      if (Math.abs(newPrice - offerPrice) < 0.001) break;
-      offerPrice = newPrice;
+  let newSharesIssued: number;
+  let greenshoeShares: number;
+  let offerPrice: number;
+  let fullyDilutedPostIpo: number;
+  
+  if (userNewPrimaryShares !== undefined && userNewPrimaryShares !== null && userNewPrimaryShares >= 0) {
+    // USER PROVIDED newPrimaryShares - use it directly
+    newSharesIssued = userNewPrimaryShares;
+    
+    // Greenshoe: Use user value if provided, otherwise calculate from percent
+    if (userGreenshoeSharesInput !== undefined && userGreenshoeSharesInput !== null && userGreenshoeSharesInput >= 0) {
+      greenshoeShares = userGreenshoeSharesInput;
+    } else {
+      greenshoeShares = newSharesIssued * greenshoePercent;
     }
+    
+    // Calculate fully diluted post-IPO shares
+    fullyDilutedPostIpo = preIpoShares + newSharesIssued + greenshoeShares;
+    
+    // Price = Discounted Valuation / Fully Diluted Shares
+    offerPrice = discountedPreMoneyValuation / fullyDilutedPostIpo;
+    
+    console.log(`[IPO Model] USER-ENTERED SHARES MODE`);
+    console.log(`[IPO Model] New Primary Shares (user): ${newSharesIssued}M`);
+    console.log(`[IPO Model] Greenshoe Shares: ${greenshoeShares}M`);
+    console.log(`[IPO Model] Post-IPO FD: ${preIpoShares}M + ${newSharesIssued}M + ${greenshoeShares}M = ${fullyDilutedPostIpo}M`);
+    console.log(`[IPO Model] Offer Price: $${discountedPreMoneyValuation.toFixed(2)}M / ${fullyDilutedPostIpo}M = $${offerPrice.toFixed(2)}/share`);
+  } else {
+    // CALCULATED MODE: Solve algebraically from primaryRaiseTarget
+    // Algebraic solution:
+    //   P = DiscountedPM / (PreIPO + Raise/P × (1 + Greenshoe%))
+    //   P × PreIPO + Raise × (1 + Greenshoe%) = DiscountedPM
+    //   P = (DiscountedPM - Raise × (1 + Greenshoe%)) / PreIPO
+    
+    const greenshoeMultiplier = 1 + greenshoePercent;
+    offerPrice = (discountedPreMoneyValuation - primaryRaiseTarget * greenshoeMultiplier) / preIpoShares;
+    
+    // Validate: If the algebraic solution produces negative or very low price, use iterative approach
+    if (offerPrice <= 0) {
+      console.log(`[IPO Model] Algebraic solution invalid ($${offerPrice.toFixed(2)}), using iterative approach`);
+      offerPrice = discountedPreMoneyValuation / preIpoShares; // Initial guess
+      for (let i = 0; i < 20; i++) {
+        const newShares = primaryRaiseTarget / offerPrice;
+        const greenshoe = newShares * greenshoePercent;
+        const totalPostIpo = preIpoShares + newShares + greenshoe;
+        const newPrice = discountedPreMoneyValuation / totalPostIpo;
+        if (Math.abs(newPrice - offerPrice) < 0.001) break;
+        offerPrice = newPrice;
+      }
+    }
+    
+    // Calculate the derived values
+    newSharesIssued = primaryRaiseTarget / offerPrice;
+    greenshoeShares = newSharesIssued * greenshoePercent;
+    fullyDilutedPostIpo = preIpoShares + newSharesIssued + greenshoeShares;
+    
+    console.log(`[IPO Model] CALCULATED SHARES MODE (from primaryRaiseTarget)`);
+    console.log(`[IPO Model] Post-IPO Fully Diluted: ${preIpoShares.toFixed(4)}M + ${newSharesIssued.toFixed(4)}M + ${greenshoeShares.toFixed(4)}M = ${fullyDilutedPostIpo.toFixed(4)}M shares`);
+    console.log(`[IPO Model] Offer Price: $${discountedPreMoneyValuation.toFixed(2)}M / ${fullyDilutedPostIpo.toFixed(4)}M FD shares = $${offerPrice.toFixed(2)}/share`);
   }
-  
-  // Calculate the derived values
-  const newSharesIssued = primaryRaiseTarget / offerPrice;
-  const greenshoeShares = newSharesIssued * greenshoePercent;
-  const fullyDilutedPostIpo = preIpoShares + newSharesIssued + greenshoeShares;
-  
-  console.log(`[IPO Model] Post-IPO Fully Diluted: ${preIpoShares.toFixed(4)}M + ${newSharesIssued.toFixed(4)}M + ${greenshoeShares.toFixed(4)}M = ${fullyDilutedPostIpo.toFixed(4)}M shares`);
-  console.log(`[IPO Model] Offer Price: $${discountedPreMoneyValuation.toFixed(2)}M / ${fullyDilutedPostIpo.toFixed(4)}M FD shares = $${offerPrice.toFixed(2)}/share`);
   
   // Verify the calculation
   const verifyPrice = discountedPreMoneyValuation / fullyDilutedPostIpo;
@@ -1347,6 +1391,7 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     underwritingFees,
     
     postIpoSharesOutstanding,
+    postIpoSharesWithGreenshoe,
     percentageSold,
     existingHoldersDilution,
     
