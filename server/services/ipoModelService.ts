@@ -595,6 +595,7 @@ export async function parseIPODescription(
   console.log(`[IPO Parser] LLM returned preIpoShares: ${parsed.preIpoShares} (type: ${typeof parsed.preIpoShares})`);
   console.log(`[IPO Parser] LLM returned ltmRevenue: ${parsed.ltmRevenue}, multiple: ${parsed.industryRevenueMultiple}`);
   console.log(`[IPO Parser] LLM returned primaryRaiseTarget: ${parsed.primaryRaiseTarget}`);
+  console.log(`[IPO Parser] LLM returned ipoDiscount: ${parsed.ipoDiscount} (CRITICAL - 0 = no discount)`);
   console.log(`[IPO Parser] LLM returned newPrimaryShares: ${parsed.newPrimaryShares} (USER-ENTERED)`);
   console.log(`[IPO Parser] LLM returned userGreenshoeShares: ${parsed.userGreenshoeShares} (USER-ENTERED)`);
   
@@ -733,7 +734,7 @@ export async function parseIPODescription(
     industryEbitdaMultiple: parsed.industryEbitdaMultiple || undefined,
     preIpoShares: normalizeShares(parsed.preIpoShares, 'preIpoShares') || 0,
     primaryRaiseTarget: normalizeToMillions(parsed.primaryRaiseTarget, 'primaryRaiseTarget') || 0,
-    ipoDiscount: parsed.ipoDiscount || 0.20,
+    ipoDiscount: parsed.ipoDiscount ?? 0.20,  // Use ?? to allow 0% discount
     secondaryShares: normalizeShares(parsed.secondaryShares, 'secondaryShares') || 0,
     greenshoePercent: parsed.greenshoePercent ?? 0.15,
     underwritingFeePercent: parsed.underwritingFeePercent ?? 0.07,
