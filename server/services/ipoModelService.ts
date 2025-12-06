@@ -383,81 +383,21 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
     warnings.push('Missing EBITDA data for selected valuation method. Defaulted to revenue multiple.');
   }
 
-  // ============ PHASE 1.5: Milestone Warrant Adjustment (Contingent Dilution) ============
-  // This adjusts valuation DOWNWARD to account for potential future share issuance
-  let milestoneWarrantTreatment: IPOPricingResult['milestoneWarrantTreatment'] = undefined;
-  const originalPreMoneyValuation = preMoneyValuation; // Store original for reporting
+  // ============ PHASE 1.5: Handle Convertible Debt FIRST (Adjusts Share Count) ============
+  // IMPORTANT: Convertible debt must be processed BEFORE milestone warrants
+  // because warrants use the adjusted share count for theoretical price calculation
   
-  if (warrantSharesMillions && warrantStrikePrice !== undefined && milestoneProbability !== undefined && milestoneProbability > 0) {
-    console.log(`[IPO Model] ============ MILESTONE WARRANT CHECK ============`);
-    
-    // Calculate initial theoretical price to check if warrant is in-the-money
-    const initialTheoreticalPriceForWarrant = preMoneyValuation / originalPreIpoShares;
-    console.log(`[IPO Model] Pre-Adjustment Theoretical Price: $${initialTheoreticalPriceForWarrant.toFixed(2)}`);
-    console.log(`[IPO Model] Warrant Strike Price: $${warrantStrikePrice.toFixed(2)}`);
-    console.log(`[IPO Model] Warrant Shares: ${warrantSharesMillions}M`);
-    console.log(`[IPO Model] Milestone Probability: ${(milestoneProbability * 100).toFixed(0)}%`);
-    
-    // Calculate expected dilution cost
-    // Cost = (Current Fair Value - Strike Price) × Shares × Probability
-    // Only apply if warrant is "in-the-money" (theoretical > strike)
-    const warrantSpread = initialTheoreticalPriceForWarrant - warrantStrikePrice;
-    const warrantInTheMoney = warrantSpread > 0;
-    
-    if (warrantInTheMoney) {
-      // Expected cost in dollars: spread × shares × probability
-      // warrantSharesMillions is in millions, so multiply by 1M to get actual shares
-      const expectedDilutionCostDollars = warrantSpread * (warrantSharesMillions * 1000000) * milestoneProbability;
-      const expectedDilutionCostMillions = expectedDilutionCostDollars / 1000000;
-      
-      // Reduce pre-money valuation by expected cost
-      preMoneyValuation = preMoneyValuation - expectedDilutionCostMillions;
-      
-      console.log(`[IPO Model] Warrant IN-THE-MONEY: $${initialTheoreticalPriceForWarrant.toFixed(2)} > $${warrantStrikePrice.toFixed(2)}`);
-      console.log(`[IPO Model] Spread: $${warrantSpread.toFixed(2)} per share`);
-      console.log(`[IPO Model] Expected Dilution Cost: $${warrantSpread.toFixed(2)} × ${warrantSharesMillions}M shares × ${(milestoneProbability * 100).toFixed(0)}% = $${expectedDilutionCostMillions.toFixed(2)}M`);
-      console.log(`[IPO Model] Adjusted Pre-Money: $${originalPreMoneyValuation.toFixed(2)}M - $${expectedDilutionCostMillions.toFixed(2)}M = $${preMoneyValuation.toFixed(2)}M`);
-      
-      warnings.push(`Milestone warrant adjustment: -$${expectedDilutionCostMillions.toFixed(2)}M (${(milestoneProbability * 100).toFixed(0)}% probability × ${warrantSharesMillions}M shares at $${warrantStrikePrice.toFixed(2)} strike).`);
-      
-      milestoneWarrantTreatment = {
-        warrantSharesMillions,
-        warrantStrikePrice,
-        milestoneProbability,
-        theoreticalPriceBeforeAdjustment: initialTheoreticalPriceForWarrant,
-        expectedDilutionCost: expectedDilutionCostMillions,
-        originalPreMoneyValuation: originalPreMoneyValuation,
-        adjustedPreMoneyValuation: preMoneyValuation,
-        warrantInTheMoney: true,
-      };
-    } else {
-      console.log(`[IPO Model] Warrant OUT-OF-THE-MONEY: $${initialTheoreticalPriceForWarrant.toFixed(2)} <= $${warrantStrikePrice.toFixed(2)}`);
-      console.log(`[IPO Model] No valuation adjustment needed`);
-      
-      milestoneWarrantTreatment = {
-        warrantSharesMillions,
-        warrantStrikePrice,
-        milestoneProbability,
-        theoreticalPriceBeforeAdjustment: initialTheoreticalPriceForWarrant,
-        expectedDilutionCost: 0,
-        originalPreMoneyValuation: originalPreMoneyValuation,
-        adjustedPreMoneyValuation: preMoneyValuation,
-        warrantInTheMoney: false,
-      };
-    }
-  }
-
-  // ============ PHASE 2: Handle Convertible Debt ============
-  // Calculate initial theoretical price WITHOUT conversion to check trigger
-  const initialTheoreticalPrice = preMoneyValuation / originalPreIpoShares;
-  const tentativeOfferPrice = initialTheoreticalPrice * (1 - ipoDiscount);
+  // Calculate first-pass theoretical price to check conversion trigger
+  const firstPassTheoreticalPrice = preMoneyValuation / originalPreIpoShares;
+  const tentativeOfferPrice = firstPassTheoreticalPrice * (1 - ipoDiscount);
   
   let adjustedPreIpoShares = originalPreIpoShares;
   let conversionActivated = false;
   
   // Check if we have convertible debt and if it triggers
   if (convertibleDebtAmount && conversionTriggerPrice && conversionShares) {
-    console.log(`[IPO Model] ============ CONVERTIBLE DEBT CHECK ============`);
+    console.log(`[IPO Model] ============ CONVERTIBLE DEBT CHECK (PHASE 1.5) ============`);
+    console.log(`[IPO Model] First-Pass Theoretical Price: $${firstPassTheoreticalPrice.toFixed(2)}`);
     console.log(`[IPO Model] Tentative Offer Price: $${tentativeOfferPrice.toFixed(2)}`);
     console.log(`[IPO Model] Conversion Trigger: $${conversionTriggerPrice.toFixed(2)}`);
     
@@ -483,6 +423,72 @@ export function calculateIPOPricing(assumptions: IPOAssumptions): IPOPricingResu
       adjustedPreIpoShares,
       tentativeOfferPrice,
     };
+  }
+
+  // ============ PHASE 2: Milestone Warrant Adjustment (Contingent Dilution) ============
+  // This adjusts valuation DOWNWARD to account for potential future share issuance
+  // IMPORTANT: Uses adjustedPreIpoShares (post-conversion) for theoretical price calculation
+  let milestoneWarrantTreatment: IPOPricingResult['milestoneWarrantTreatment'] = undefined;
+  const originalPreMoneyValuation = preMoneyValuation; // Store original for reporting
+  
+  if (warrantSharesMillions && warrantStrikePrice !== undefined && milestoneProbability !== undefined && milestoneProbability > 0) {
+    console.log(`[IPO Model] ============ MILESTONE WARRANT CHECK (PHASE 2) ============`);
+    
+    // Calculate theoretical price USING ADJUSTED SHARE COUNT (post-conversion if applicable)
+    const theoreticalPriceForWarrantCheck = preMoneyValuation / adjustedPreIpoShares;
+    console.log(`[IPO Model] Shares for Warrant Calculation: ${adjustedPreIpoShares}M (post-conversion if applicable)`);
+    console.log(`[IPO Model] Pre-Adjustment Theoretical Price: $${theoreticalPriceForWarrantCheck.toFixed(2)}`);
+    console.log(`[IPO Model] Warrant Strike Price: $${warrantStrikePrice.toFixed(2)}`);
+    console.log(`[IPO Model] Warrant Shares: ${warrantSharesMillions}M`);
+    console.log(`[IPO Model] Milestone Probability: ${(milestoneProbability * 100).toFixed(0)}%`);
+    
+    // Calculate expected dilution cost
+    // Cost = (Current Fair Value - Strike Price) × Shares × Probability
+    // Only apply if warrant is "in-the-money" (theoretical > strike)
+    const warrantSpread = theoreticalPriceForWarrantCheck - warrantStrikePrice;
+    const warrantInTheMoney = warrantSpread > 0;
+    
+    if (warrantInTheMoney) {
+      // Expected cost in dollars: spread × shares × probability
+      // warrantSharesMillions is in millions, so multiply by 1M to get actual shares
+      const expectedDilutionCostDollars = warrantSpread * (warrantSharesMillions * 1000000) * milestoneProbability;
+      const expectedDilutionCostMillions = expectedDilutionCostDollars / 1000000;
+      
+      // Reduce pre-money valuation by expected cost
+      preMoneyValuation = preMoneyValuation - expectedDilutionCostMillions;
+      
+      console.log(`[IPO Model] Warrant IN-THE-MONEY: $${theoreticalPriceForWarrantCheck.toFixed(2)} > $${warrantStrikePrice.toFixed(2)}`);
+      console.log(`[IPO Model] Spread: $${warrantSpread.toFixed(2)} per share`);
+      console.log(`[IPO Model] Expected Dilution Cost: $${warrantSpread.toFixed(2)} × ${warrantSharesMillions}M shares × ${(milestoneProbability * 100).toFixed(0)}% = $${expectedDilutionCostMillions.toFixed(2)}M`);
+      console.log(`[IPO Model] Adjusted Pre-Money: $${originalPreMoneyValuation.toFixed(2)}M - $${expectedDilutionCostMillions.toFixed(2)}M = $${preMoneyValuation.toFixed(2)}M`);
+      
+      warnings.push(`Milestone warrant adjustment: -$${expectedDilutionCostMillions.toFixed(2)}M (${(milestoneProbability * 100).toFixed(0)}% probability × ${warrantSharesMillions}M shares at $${warrantStrikePrice.toFixed(2)} strike).`);
+      
+      milestoneWarrantTreatment = {
+        warrantSharesMillions,
+        warrantStrikePrice,
+        milestoneProbability,
+        theoreticalPriceBeforeAdjustment: theoreticalPriceForWarrantCheck,
+        expectedDilutionCost: expectedDilutionCostMillions,
+        originalPreMoneyValuation: originalPreMoneyValuation,
+        adjustedPreMoneyValuation: preMoneyValuation,
+        warrantInTheMoney: true,
+      };
+    } else {
+      console.log(`[IPO Model] Warrant OUT-OF-THE-MONEY: $${theoreticalPriceForWarrantCheck.toFixed(2)} <= $${warrantStrikePrice.toFixed(2)}`);
+      console.log(`[IPO Model] No valuation adjustment needed`);
+      
+      milestoneWarrantTreatment = {
+        warrantSharesMillions,
+        warrantStrikePrice,
+        milestoneProbability,
+        theoreticalPriceBeforeAdjustment: theoreticalPriceForWarrantCheck,
+        expectedDilutionCost: 0,
+        originalPreMoneyValuation: originalPreMoneyValuation,
+        adjustedPreMoneyValuation: preMoneyValuation,
+        warrantInTheMoney: false,
+      };
+    }
   }
 
   // ============ PHASE 3: Calculate Final Theoretical & Offer Price ============
